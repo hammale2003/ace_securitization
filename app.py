@@ -5,6 +5,7 @@ Provides a user-friendly interface for:
 - Asking securitization questions
 - Viewing Generator, Reflector, and Curator outputs
 - Exploring and managing the playbook
+- Choosing output format (text or ProseMirror JSON)
 """
 import streamlit as st
 import json
@@ -43,6 +44,8 @@ def init_session_state():
         st.session_state.current_result = None
     if "config" not in st.session_state:
         st.session_state.config = None
+    if "output_format" not in st.session_state:
+        st.session_state.output_format = "text"
 
 
 init_session_state()
@@ -70,7 +73,7 @@ def render_sidebar():
     model_options = {
         "openai": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o"],
         "anthropic": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
-        "google": ["gemini-pro", "gemini-1.5-pro"],
+        "google": ["gemini-3-pro-preview"],
         "mock": ["mock-model"]
     }
     
@@ -113,6 +116,22 @@ def render_sidebar():
         value=True,
         help="Stream tokens in real-time (provider must support it)"
     )
+    
+    st.sidebar.divider()
+    
+    # Output Format Selection
+    st.sidebar.subheader("Output Format")
+    
+    output_format = st.sidebar.radio(
+        "Response Format",
+        options=["text", "prosemirror"],
+        index=0 if st.session_state.output_format == "text" else 1,
+        help="Choose output format: 'text' for plain text, 'prosemirror' for ProseMirror JSON (for document editors)"
+    )
+    st.session_state.output_format = output_format
+    
+    if output_format == "prosemirror":
+        st.sidebar.info("📄 ProseMirror JSON format enabled. The response will include structured document JSON suitable for rich text editors.")
     
     st.sidebar.divider()
     
@@ -171,6 +190,7 @@ def render_sidebar():
         st.sidebar.success("Pipeline: Active")
         stats = st.session_state.pipeline.get_playbook_stats()
         st.sidebar.metric("Total Bullets", stats.get("total_bullets", 0))
+        st.sidebar.caption(f"Output Format: **{st.session_state.output_format}**")
     else:
         st.sidebar.warning("Pipeline: Not initialized")
 
@@ -186,8 +206,6 @@ def render_header():
 def render_question_input():
     """Render the question input section."""
     st.subheader("Ask a Question")
-    
-
     
     question = st.text_area(
         "Enter your securitization question:",
@@ -219,7 +237,7 @@ def render_question_input():
         run_full = st.button("Run Full Pipeline", type="primary", use_container_width=True)
     
     with col2:
-        generate_only = st.button(" Generate Only", use_container_width=True)
+        generate_only = st.button("Generate Only", use_container_width=True)
     
     return question, ground_truth, feedback, run_full, generate_only
 
@@ -264,6 +282,21 @@ def render_generator_output(output: Optional[dict]):
     # Final Answer
     st.markdown("### Final Answer")
     st.markdown(output.get("final_answer", "No answer generated."))
+    
+    # ProseMirror JSON output (if available)
+    prosemirror_output = output.get("final_answer_prosemirror")
+    if prosemirror_output:
+        with st.expander("ProseMirror JSON", expanded=False):
+            st.json(prosemirror_output)
+            
+            # Add copy button
+            prosemirror_json_str = json.dumps(prosemirror_output, indent=2)
+            st.download_button(
+                label="Download ProseMirror JSON",
+                data=prosemirror_json_str,
+                file_name="answer_prosemirror.json",
+                mime="application/json"
+            )
     
     # Reasoning
     with st.expander("Reasoning", expanded=True):
@@ -310,9 +343,9 @@ def render_reflector_output(output: Optional[dict]):
     # Bullet Tags
     bullet_tags = output.get("bullet_tags", [])
     if bullet_tags:
-        st.markdown("### 🏷️ Bullet Tags")
+        st.markdown("### Bullet Tags")
         for tag in bullet_tags:
-            tag_color = {"helpful": "🟢", "harmful": "🔴", "neutral": "⚪"}.get(tag.get("tag"), "⚪")
+            tag_color = {"helpful": "[+]", "harmful": "[-]", "neutral": "[~]"}.get(tag.get("tag"), "[~]")
             st.markdown(f"{tag_color} `{tag.get('id')}`: {tag.get('tag')}")
 
 
@@ -332,17 +365,33 @@ def render_curator_output(output: Optional[dict], added_bullets: list):
     operations = output.get("operations", [])
     
     if operations:
-        st.markdown("###  Planned Operations")
+        st.markdown("### Planned Operations")
         for i, op in enumerate(operations, 1):
-            with st.expander(f"Operation {i}: {op.get('type')} → {op.get('section')}"):
-                st.markdown(f"**Section:** {op.get('section')}")
-                st.markdown(f"**Content:** {op.get('content')}")
+            op_type = op.get('type', 'UNKNOWN')
+            op_icon = {"ADD": "[+]", "REMOVE": "[-]", "MODIFY": "[*]", "MERGE": "[M]"}.get(op_type, "[?]")
+            
+            with st.expander(f"{op_icon} Operation {i}: {op_type}"):
+                if op_type == "ADD":
+                    st.markdown(f"**Section:** {op.get('section')}")
+                    st.markdown(f"**Content:** {op.get('content')}")
+                elif op_type == "REMOVE":
+                    st.markdown(f"**Bullet ID:** {op.get('bullet_id')}")
+                    st.markdown(f"**Reason:** {op.get('reason')}")
+                elif op_type == "MODIFY":
+                    st.markdown(f"**Bullet ID:** {op.get('bullet_id')}")
+                    st.markdown(f"**New Content:** {op.get('new_content')}")
+                    st.markdown(f"**Reason:** {op.get('reason')}")
+                elif op_type == "MERGE":
+                    st.markdown(f"**Source Bullets:** {op.get('source_bullet_ids')}")
+                    st.markdown(f"**Target Section:** {op.get('target_section')}")
+                    st.markdown(f"**Merged Content:** {op.get('merged_content')}")
+                    st.markdown(f"**Reason:** {op.get('reason')}")
     else:
         st.info("No new operations needed - playbook already contains relevant knowledge.")
     
     # Added Bullets
     if added_bullets:
-        st.markdown("###  Added Bullets")
+        st.markdown("### Added Bullets")
         for bullet in added_bullets:
             st.success(f"**{bullet.get('id')}**: {bullet.get('content')[:100]}...")
 
@@ -359,11 +408,12 @@ def render_playbook_view():
     stats = playbook.get_stats()
     
     # Stats overview
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Bullets", stats.get("total_bullets", 0))
     col2.metric("Strategies", stats.get("sections", {}).get("strategies", 0))
     col3.metric("Pitfalls", stats.get("sections", {}).get("pitfalls", 0))
     col4.metric("Templates", stats.get("sections", {}).get("templates", 0))
+    col5.metric("Archived", stats.get("archived_count", 0))
     
     # Section views
     sections = ["strategies", "pitfalls", "templates", "definitions", "code_snippets"]
@@ -371,10 +421,10 @@ def render_playbook_view():
     for section in sections:
         bullets = playbook.get_section(section)
         if bullets:
-            with st.expander(f"📁 {section.upper()} ({len(bullets)} items)", expanded=False):
+            with st.expander(f"{section.upper()} ({len(bullets)} items)", expanded=False):
                 for bullet in bullets:
                     effectiveness = bullet.effectiveness_score
-                    eff_indicator = "🟢" if effectiveness > 0.5 else "🟡" if effectiveness >= 0 else "🔴"
+                    eff_indicator = "[+]" if effectiveness > 0.5 else "[~]" if effectiveness >= 0 else "[-]"
                     
                     st.markdown(f"""
                     **{bullet.id}** {eff_indicator}
@@ -386,12 +436,26 @@ def render_playbook_view():
                     ---
                     """)
     
+    # Archived bullets
+    if playbook.archived_bullets:
+        with st.expander(f"ARCHIVED ({len(playbook.archived_bullets)} items)", expanded=False):
+            for bullet in playbook.archived_bullets:
+                st.markdown(f"""
+                **{bullet.id}** (archived)
+                
+                {bullet.content}
+                
+                *Reason: {bullet.archive_reason}*
+                
+                ---
+                """)
+    
     # Playbook actions
     st.divider()
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button(" Deduplicate Playbook"):
+        if st.button("Deduplicate Playbook"):
             removed = deduplicate_playbook(playbook)
             if removed:
                 st.session_state.pipeline.playbook_manager.save()
@@ -400,7 +464,15 @@ def render_playbook_view():
                 st.info("No duplicates found.")
     
     with col2:
-        if st.button(" Export Playbook"):
+        if st.button("Auto-Cleanup Harmful"):
+            removed = st.session_state.pipeline.auto_cleanup()
+            if removed:
+                st.success(f"Removed {len(removed)} harmful bullets.")
+            else:
+                st.info("No harmful bullets to remove.")
+    
+    with col3:
+        if st.button("Export Playbook"):
             playbook_json = json.dumps(playbook.to_dict(), indent=2)
             st.download_button(
                 "Download JSON",
@@ -412,7 +484,7 @@ def render_playbook_view():
 
 def render_history():
     """Render the question history."""
-    st.subheader("📜 History")
+    st.subheader("History")
     
     if not st.session_state.history:
         st.info("No questions asked yet.")
@@ -422,6 +494,7 @@ def render_history():
         with st.expander(f"{i}. {item['question'][:50]}...", expanded=False):
             st.markdown(f"**Question:** {item['question']}")
             st.markdown(f"**Answer:** {item['answer'][:200]}...")
+            st.markdown(f"**Format:** {item.get('output_format', 'text')}")
             st.markdown(f"*{item['timestamp']}*")
 
 
@@ -438,6 +511,9 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
     if not question.strip():
         st.warning("Please enter a question.")
         return
+    
+    # Get output format from session state
+    output_format = st.session_state.output_format
     
     # Check if streaming is enabled (both in ACEConfig and LLMConfig)
     enable_streaming = (
@@ -483,7 +559,8 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
                     question=question,
                     ground_truth=ground_truth if ground_truth else None,
                     feedback=feedback if feedback else None,
-                    stream_callbacks=stream_callbacks
+                    stream_callbacks=stream_callbacks,
+                    output_format=output_format
                 )
                 
                 # Clear streaming placeholders after completion
@@ -496,7 +573,8 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
                     result = st.session_state.pipeline.run(
                         question=question,
                         ground_truth=ground_truth if ground_truth else None,
-                        feedback=feedback if feedback else None
+                        feedback=feedback if feedback else None,
+                        output_format=output_format
                     )
                 
             # Store results (same for both streaming and non-streaming)
@@ -512,6 +590,7 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
             st.session_state.history.append({
                 "question": question,
                 "answer": result.generator_output.final_answer,
+                "output_format": output_format,
                 "timestamp": result.timestamp
             })
             
@@ -529,14 +608,18 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
                 
                 output = st.session_state.pipeline.generate_only(
                     question,
-                    stream_callback=generator_callback
+                    stream_callback=generator_callback,
+                    output_format=output_format
                 )
                 
                 generator_placeholder.empty()
             else:
                 # Non-streaming mode
                 with st.spinner("Generating..."):
-                    output = st.session_state.pipeline.generate_only(question)
+                    output = st.session_state.pipeline.generate_only(
+                        question,
+                        output_format=output_format
+                    )
             
             st.session_state.current_result = {
                 "generator_output": output.to_dict(),
@@ -548,10 +631,11 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
             st.session_state.history.append({
                 "question": question,
                 "answer": output.final_answer,
+                "output_format": output_format,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             })
         
-        st.success("✅ Processing complete!")
+        st.success("Processing complete!")
         
     except Exception as e:
         st.error(f"Error: {str(e)}")

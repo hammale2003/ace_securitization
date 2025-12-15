@@ -2,6 +2,7 @@
 ACE Agents: Generator, Reflector, and Curator.
 
 These three agents work together to process questions and evolve the playbook.
+Now with semantic retrieval support and extended operations (ADD, REMOVE, MODIFY, MERGE).
 """
 import json
 from typing import Dict, List, Any, Optional, Generator as GenType, Callable
@@ -10,9 +11,11 @@ from datetime import datetime
 
 from config import ACEConfig, LLMConfig
 from llm_client import LLMClient, create_client, LLMResponse
-from playbook import Playbook, PlaybookManager, Bullet
+from playbook import Playbook, PlaybookManager, Bullet, OperationResult
+from retriever import PlaybookRetriever, RetrieverConfig, RetrievedBullet
 from prompts import (
     GENERATOR_SYSTEM_PROMPT,
+    GENERATOR_PROSEMIRROR_SYSTEM_PROMPT,
     REFLECTOR_SYSTEM_PROMPT,
     CURATOR_SYSTEM_PROMPT,
     REFINEMENT_SYSTEM_PROMPT,
@@ -32,40 +35,80 @@ class GeneratorOutput:
     reasoning: str
     bullet_ids: List[str]
     final_answer: str
+    final_answer_prosemirror: Optional[Dict[str, Any]] = None  # ProseMirror JSON format
     raw_response: Optional[LLMResponse] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "reasoning": self.reasoning,
             "bullet_ids": self.bullet_ids,
             "final_answer": self.final_answer
         }
+        if self.final_answer_prosemirror:
+            result["final_answer_prosemirror"] = self.final_answer_prosemirror
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GeneratorOutput":
         return cls(
             reasoning=data.get("reasoning", ""),
             bullet_ids=data.get("bullet_ids", []),
-            final_answer=data.get("final_answer", "")
+            final_answer=data.get("final_answer", ""),
+            final_answer_prosemirror=data.get("final_answer_prosemirror")
         )
     
     @classmethod
-    def from_llm_response(cls, response: LLMResponse) -> "GeneratorOutput":
+    def from_llm_response(cls, response: LLMResponse, prosemirror_mode: bool = False) -> "GeneratorOutput":
         parsed = response.parse_json()
         if parsed:
-            return cls(
-                reasoning=parsed.get("reasoning", ""),
-                bullet_ids=parsed.get("bullet_ids", []),
-                final_answer=parsed.get("final_answer", ""),
-                raw_response=response
-            )
-        # Fallback: treat entire response as final answer
+            if prosemirror_mode:
+                # ProseMirror mode - final_answer_prosemirror is the main output
+                prosemirror_doc = parsed.get("final_answer_prosemirror")
+                # Extract plain text from prosemirror for final_answer fallback
+                plain_text = cls._extract_text_from_prosemirror(prosemirror_doc) if prosemirror_doc else ""
+                return cls(
+                    reasoning=parsed.get("reasoning", ""),
+                    bullet_ids=parsed.get("bullet_ids", []),
+                    final_answer=plain_text,
+                    final_answer_prosemirror=prosemirror_doc,
+                    raw_response=response
+                )
+            else:
+                return cls(
+                    reasoning=parsed.get("reasoning", ""),
+                    bullet_ids=parsed.get("bullet_ids", []),
+                    final_answer=parsed.get("final_answer", ""),
+                    final_answer_prosemirror=parsed.get("final_answer_prosemirror"),
+                    raw_response=response
+                )
         return cls(
             reasoning="",
             bullet_ids=[],
             final_answer=response.content,
             raw_response=response
         )
+    
+    @staticmethod
+    def _extract_text_from_prosemirror(doc: Dict[str, Any]) -> str:
+        """Extract plain text from a ProseMirror document."""
+        if not doc or not isinstance(doc, dict):
+            return ""
+        
+        texts = []
+        
+        def extract_from_node(node):
+            if isinstance(node, dict):
+                if node.get("type") == "text":
+                    texts.append(node.get("text", ""))
+                elif "content" in node:
+                    for child in node["content"]:
+                        extract_from_node(child)
+            elif isinstance(node, list):
+                for item in node:
+                    extract_from_node(item)
+        
+        extract_from_node(doc)
+        return " ".join(texts)
 
 
 @dataclass
@@ -77,6 +120,8 @@ class ReflectorOutput:
     correct_approach: str
     key_insight: str
     bullet_tags: List[Dict[str, str]]
+    removal_candidates: List[str] = field(default_factory=list)
+    modification_suggestions: List[Dict[str, str]] = field(default_factory=list)
     raw_response: Optional[LLMResponse] = None
     
     def to_dict(self) -> Dict[str, Any]:
@@ -86,7 +131,9 @@ class ReflectorOutput:
             "root_cause_analysis": self.root_cause_analysis,
             "correct_approach": self.correct_approach,
             "key_insight": self.key_insight,
-            "bullet_tags": self.bullet_tags
+            "bullet_tags": self.bullet_tags,
+            "removal_candidates": self.removal_candidates,
+            "modification_suggestions": self.modification_suggestions
         }
     
     @classmethod
@@ -97,7 +144,9 @@ class ReflectorOutput:
             root_cause_analysis=data.get("root_cause_analysis", ""),
             correct_approach=data.get("correct_approach", ""),
             key_insight=data.get("key_insight", ""),
-            bullet_tags=data.get("bullet_tags", [])
+            bullet_tags=data.get("bullet_tags", []),
+            removal_candidates=data.get("removal_candidates", []),
+            modification_suggestions=data.get("modification_suggestions", [])
         )
     
     @classmethod
@@ -111,6 +160,8 @@ class ReflectorOutput:
                 correct_approach=parsed.get("correct_approach", ""),
                 key_insight=parsed.get("key_insight", ""),
                 bullet_tags=parsed.get("bullet_tags", []),
+                removal_candidates=parsed.get("removal_candidates", []),
+                modification_suggestions=parsed.get("modification_suggestions", []),
                 raw_response=response
             )
         return cls(
@@ -120,6 +171,8 @@ class ReflectorOutput:
             correct_approach="",
             key_insight="",
             bullet_tags=[],
+            removal_candidates=[],
+            modification_suggestions=[],
             raw_response=response
         )
 
@@ -164,18 +217,21 @@ class Generator:
     """
     The Generator agent produces answers using the playbook.
     
-    It reads the playbook, applies relevant knowledge, and generates
-    structured responses with reasoning and bullet references.
+    Now supports semantic retrieval to only include relevant bullets.
+    Supports both plain text and ProseMirror JSON output formats.
     """
     
-    def __init__(self, client: LLMClient):
+    def __init__(self, client: LLMClient, retriever: Optional[PlaybookRetriever] = None):
         self.client = client
+        self.retriever = retriever
     
     def generate(
         self,
         question: str,
         playbook: Playbook,
-        stream_callback: Optional[Callable[[str], None]] = None
+        stream_callback: Optional[Callable[[str], None]] = None,
+        use_retrieval: bool = True,
+        output_format: str = "text"  # "text" or "prosemirror"
     ) -> GeneratorOutput:
         """
         Generate an answer for the given question using the playbook.
@@ -184,41 +240,53 @@ class Generator:
             question: The user's question
             playbook: The current playbook with accumulated knowledge
             stream_callback: Optional callback for streaming tokens
+            use_retrieval: If True and retriever is set, use semantic retrieval
+            output_format: "text" for plain text, "prosemirror" for ProseMirror JSON
         
         Returns:
             GeneratorOutput with reasoning, bullet_ids, and final_answer
         """
-        playbook_text = playbook.format_for_prompt()
+        # Determine whether to use retrieval
+        playbook_size = len(playbook.get_all_bullets())
+        
+        if (use_retrieval and 
+            self.retriever is not None and 
+            self.retriever.should_use_retrieval(playbook_size)):
+            # Use semantic retrieval
+            retrieved_bullets = self.retriever.search(question)
+            playbook_text = self.retriever.format_retrieved_for_prompt(retrieved_bullets)
+        else:
+            # Use full playbook
+            playbook_text = playbook.format_for_prompt()
+        
         user_message = format_generator_user_message(playbook_text, question)
         
+        # Select system prompt based on output format
+        if output_format == "prosemirror":
+            system_prompt = GENERATOR_PROSEMIRROR_SYSTEM_PROMPT
+        else:
+            system_prompt = GENERATOR_SYSTEM_PROMPT
+        
         if stream_callback and self.client.config.stream:
-            # Streaming mode
             full_response = ""
-            for chunk in self.client.stream_chat(GENERATOR_SYSTEM_PROMPT, user_message):
+            for chunk in self.client.stream_chat(system_prompt, user_message):
                 full_response += chunk
                 stream_callback(chunk)
-            
             response = LLMResponse(content=full_response)
         else:
-            # Non-streaming mode
-            response = self.client.chat(GENERATOR_SYSTEM_PROMPT, user_message)
+            response = self.client.chat(system_prompt, user_message)
         
-        return GeneratorOutput.from_llm_response(response)
+        return GeneratorOutput.from_llm_response(
+            response, 
+            prosemirror_mode=(output_format == "prosemirror")
+        )
     
     def generate_stream(
         self,
         question: str,
         playbook: Playbook
     ) -> GenType[str, None, GeneratorOutput]:
-        """
-        Generator that yields tokens and returns the final output.
-        
-        Usage:
-            gen = generator.generate_stream(question, playbook)
-            for token in gen:
-                print(token, end="")
-            output = gen.value  # Not available in Python, use generate() with callback instead
-        """
+        """Generator that yields tokens and returns the final output."""
         playbook_text = playbook.format_for_prompt()
         user_message = format_generator_user_message(playbook_text, question)
         
@@ -235,8 +303,7 @@ class Reflector:
     """
     The Reflector agent analyzes Generator output and extracts insights.
     
-    It identifies errors, root causes, and key learnings that should
-    be added to the playbook.
+    Now also identifies candidates for REMOVE and MODIFY operations.
     """
     
     def __init__(self, client: LLMClient, max_iterations: int = 5):
@@ -254,17 +321,6 @@ class Reflector:
     ) -> ReflectorOutput:
         """
         Analyze the Generator's output and produce reflection.
-        
-        Args:
-            question: The original question
-            generator_output: The Generator's response
-            playbook: The current playbook
-            ground_truth: Optional correct answer for comparison
-            feedback: Optional human feedback
-            stream_callback: Optional callback for streaming tokens
-        
-        Returns:
-            ReflectorOutput with analysis and insights
         """
         playbook_text = playbook.format_for_prompt()
         user_message = format_reflector_user_message(
@@ -296,14 +352,9 @@ class Reflector:
         iterations: Optional[int] = None,
         stream_callback: Optional[Callable[[str], None]] = None
     ) -> ReflectorOutput:
-        """
-        Perform iterative reflection refinement.
-        
-        Multiple passes to improve the quality of insights.
-        """
+        """Perform iterative reflection refinement."""
         num_iterations = iterations or self.max_iterations
         
-        # Initial reflection
         current_reflection = self.reflect(
             question=question,
             generator_output=generator_output,
@@ -313,7 +364,6 @@ class Reflector:
             stream_callback=stream_callback
         )
         
-        # Iterative refinement
         playbook_text = playbook.format_for_prompt()
         
         for i in range(1, num_iterations):
@@ -336,7 +386,6 @@ class Reflector:
             
             refined = ReflectorOutput.from_llm_response(response)
             
-            # Only update if refinement produced valid output
             if refined.key_insight or refined.reasoning:
                 current_reflection = refined
         
@@ -347,8 +396,7 @@ class Curator:
     """
     The Curator agent updates the playbook based on Reflector insights.
     
-    It determines what new knowledge should be added, avoiding
-    redundancy and maintaining organization.
+    Now supports all operations: ADD, REMOVE, MODIFY, MERGE
     """
     
     def __init__(self, client: LLMClient, playbook_manager: PlaybookManager):
@@ -365,16 +413,6 @@ class Curator:
     ) -> CuratorOutput:
         """
         Determine what updates to make to the playbook.
-        
-        Args:
-            question: The original question
-            generator_output: The Generator's response
-            reflector_output: The Reflector's analysis
-            playbook: The current playbook
-            stream_callback: Optional callback for streaming tokens
-        
-        Returns:
-            CuratorOutput with reasoning and operations to apply
         """
         playbook_text = playbook.format_for_prompt()
         user_message = format_curator_user_message(
@@ -399,23 +437,23 @@ class Curator:
         self,
         curator_output: CuratorOutput,
         reflector_output: ReflectorOutput
-    ) -> List[Bullet]:
+    ) -> List[OperationResult]:
         """
         Apply the curator's operations to the playbook.
         
         Also updates bullet tags based on reflector feedback.
         
         Returns:
-            List of newly added bullets
+            List of OperationResult objects
         """
         # Apply bullet tags from reflector
         if reflector_output.bullet_tags:
             self.playbook_manager.update_tags(reflector_output.bullet_tags)
         
-        # Apply curator operations (additions)
-        added_bullets = self.playbook_manager.apply_operations(curator_output.operations)
+        # Apply curator operations (ADD, REMOVE, MODIFY, MERGE)
+        results = self.playbook_manager.apply_operations(curator_output.operations)
         
-        return added_bullets
+        return results
 
 
 @dataclass
@@ -425,9 +463,21 @@ class ACEPipelineResult:
     generator_output: GeneratorOutput
     reflector_output: ReflectorOutput
     curator_output: CuratorOutput
-    added_bullets: List[Bullet]
+    operation_results: List[OperationResult]
     playbook_stats: Dict[str, Any]
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    retrieval_used: bool = False
+    retrieved_bullet_count: int = 0
+    
+    # For backwards compatibility
+    @property
+    def added_bullets(self) -> List[Bullet]:
+        """Get bullets that were added (for backwards compatibility)."""
+        added = []
+        for result in self.operation_results:
+            if result.success and result.operation_type == "ADD" and result.bullet_id:
+                added.append(Bullet(id=result.bullet_id, content=""))
+        return added
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -435,18 +485,31 @@ class ACEPipelineResult:
             "generator_output": self.generator_output.to_dict(),
             "reflector_output": self.reflector_output.to_dict(),
             "curator_output": self.curator_output.to_dict(),
-            "added_bullets": [b.to_dict() for b in self.added_bullets],
+            "operation_results": [
+                {
+                    "success": r.success,
+                    "operation_type": r.operation_type,
+                    "bullet_id": r.bullet_id,
+                    "message": r.message,
+                    "affected_bullets": r.affected_bullets
+                }
+                for r in self.operation_results
+            ],
             "playbook_stats": self.playbook_stats,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
+            "retrieval_used": self.retrieval_used,
+            "retrieved_bullet_count": self.retrieved_bullet_count
         }
 
 
 class ACEPipeline:
     """
     The main ACE pipeline that orchestrates Generator, Reflector, and Curator.
+    
+    Now with semantic retrieval support and extended operations.
     """
     
-    def __init__(self, config: ACEConfig = None):
+    def __init__(self, config: ACEConfig = None, enable_retrieval: bool = True):
         self.config = config or ACEConfig()
         
         # Initialize LLM client
@@ -455,8 +518,26 @@ class ACEPipeline:
         # Initialize playbook manager
         self.playbook_manager = PlaybookManager(self.config.playbook)
         
+        # Initialize retriever if enabled
+        self.retriever = None
+        if enable_retrieval:
+            retriever_config = RetrieverConfig(
+                top_k=10,
+                similarity_threshold=0.3,
+                embedding_provider="simple",
+                min_playbook_size_for_retrieval=15
+            )
+            self.retriever = PlaybookRetriever(retriever_config)
+            
+            # Index the playbook
+            playbook = self.playbook_manager.get_playbook()
+            self.retriever.index_playbook(playbook)
+            
+            # Link retriever to playbook manager for automatic index updates
+            self.playbook_manager.set_retriever(self.retriever)
+        
         # Initialize agents
-        self.generator = Generator(self.client)
+        self.generator = Generator(self.client, self.retriever)
         self.reflector = Reflector(self.client, self.config.max_reflector_iterations)
         self.curator = Curator(self.client, self.playbook_manager)
     
@@ -465,7 +546,9 @@ class ACEPipeline:
         question: str,
         ground_truth: Optional[str] = None,
         feedback: Optional[str] = None,
-        stream_callbacks: Optional[Dict[str, Callable[[str], None]]] = None
+        stream_callbacks: Optional[Dict[str, Callable[[str], None]]] = None,
+        use_retrieval: bool = True,
+        output_format: str = "text"  # "text" or "prosemirror"
     ) -> ACEPipelineResult:
         """
         Run the full ACE pipeline for a question.
@@ -474,20 +557,31 @@ class ACEPipeline:
             question: The user's question
             ground_truth: Optional correct answer for training
             feedback: Optional human feedback
-            stream_callbacks: Dict with keys 'generator', 'reflector', 'curator'
-                             mapping to streaming callback functions
-        
-        Returns:
-            ACEPipelineResult with all outputs and updated playbook stats
+            stream_callbacks: Dict with callbacks for each agent
+            use_retrieval: Whether to use semantic retrieval
+            output_format: "text" for plain text, "prosemirror" for ProseMirror JSON
         """
         callbacks = stream_callbacks or {}
         playbook = self.playbook_manager.get_playbook()
+        
+        # Track retrieval usage
+        retrieval_used = False
+        retrieved_count = 0
+        
+        if use_retrieval and self.retriever:
+            playbook_size = len(playbook.get_all_bullets())
+            retrieval_used = self.retriever.should_use_retrieval(playbook_size)
+            if retrieval_used:
+                retrieved = self.retriever.search(question)
+                retrieved_count = len(retrieved)
         
         # Step 1: Generate answer
         generator_output = self.generator.generate(
             question=question,
             playbook=playbook,
-            stream_callback=callbacks.get("generator")
+            stream_callback=callbacks.get("generator"),
+            use_retrieval=use_retrieval,
+            output_format=output_format
         )
         
         # Step 2: Reflect on the answer
@@ -510,7 +604,7 @@ class ACEPipeline:
         )
         
         # Step 4: Apply updates
-        added_bullets = self.curator.apply_updates(curator_output, reflector_output)
+        operation_results = self.curator.apply_updates(curator_output, reflector_output)
         
         # Get updated stats
         playbook_stats = self.playbook_manager.get_playbook().get_stats()
@@ -520,8 +614,10 @@ class ACEPipeline:
             generator_output=generator_output,
             reflector_output=reflector_output,
             curator_output=curator_output,
-            added_bullets=added_bullets,
-            playbook_stats=playbook_stats
+            operation_results=operation_results,
+            playbook_stats=playbook_stats,
+            retrieval_used=retrieval_used,
+            retrieved_bullet_count=retrieved_count
         )
     
     def run_with_refinement(
@@ -530,22 +626,30 @@ class ACEPipeline:
         ground_truth: Optional[str] = None,
         feedback: Optional[str] = None,
         reflector_iterations: int = 3,
-        stream_callbacks: Optional[Dict[str, Callable[[str], None]]] = None
+        stream_callbacks: Optional[Dict[str, Callable[[str], None]]] = None,
+        use_retrieval: bool = True
     ) -> ACEPipelineResult:
-        """
-        Run the ACE pipeline with iterative reflector refinement.
-        """
+        """Run the ACE pipeline with iterative reflector refinement."""
         callbacks = stream_callbacks or {}
         playbook = self.playbook_manager.get_playbook()
         
-        # Step 1: Generate answer
+        retrieval_used = False
+        retrieved_count = 0
+        
+        if use_retrieval and self.retriever:
+            playbook_size = len(playbook.get_all_bullets())
+            retrieval_used = self.retriever.should_use_retrieval(playbook_size)
+            if retrieval_used:
+                retrieved = self.retriever.search(question)
+                retrieved_count = len(retrieved)
+        
         generator_output = self.generator.generate(
             question=question,
             playbook=playbook,
-            stream_callback=callbacks.get("generator")
+            stream_callback=callbacks.get("generator"),
+            use_retrieval=use_retrieval
         )
         
-        # Step 2: Reflect with refinement
         reflector_output = self.reflector.reflect_with_refinement(
             question=question,
             generator_output=generator_output,
@@ -556,7 +660,6 @@ class ACEPipeline:
             stream_callback=callbacks.get("reflector")
         )
         
-        # Step 3: Curate new knowledge
         curator_output = self.curator.curate(
             question=question,
             generator_output=generator_output,
@@ -565,8 +668,7 @@ class ACEPipeline:
             stream_callback=callbacks.get("curator")
         )
         
-        # Step 4: Apply updates
-        added_bullets = self.curator.apply_updates(curator_output, reflector_output)
+        operation_results = self.curator.apply_updates(curator_output, reflector_output)
         
         playbook_stats = self.playbook_manager.get_playbook().get_stats()
         
@@ -575,26 +677,62 @@ class ACEPipeline:
             generator_output=generator_output,
             reflector_output=reflector_output,
             curator_output=curator_output,
-            added_bullets=added_bullets,
-            playbook_stats=playbook_stats
+            operation_results=operation_results,
+            playbook_stats=playbook_stats,
+            retrieval_used=retrieval_used,
+            retrieved_bullet_count=retrieved_count
         )
     
     def generate_only(
         self,
         question: str,
-        stream_callback: Optional[Callable[[str], None]] = None
+        stream_callback: Optional[Callable[[str], None]] = None,
+        use_retrieval: bool = True,
+        output_format: str = "text"  # "text" or "prosemirror"
     ) -> GeneratorOutput:
         """
         Only run the Generator without reflection or curation.
         
         Useful for inference after the playbook has been trained.
+        
+        Args:
+            question: The user's question
+            stream_callback: Optional callback for streaming
+            use_retrieval: Whether to use semantic retrieval
+            output_format: "text" for plain text, "prosemirror" for ProseMirror JSON
         """
         playbook = self.playbook_manager.get_playbook()
         return self.generator.generate(
             question=question,
             playbook=playbook,
-            stream_callback=stream_callback
+            stream_callback=stream_callback,
+            use_retrieval=use_retrieval,
+            output_format=output_format
         )
+    
+    def auto_cleanup(self, harmful_threshold: int = 5,
+                     effectiveness_threshold: float = -0.3) -> List[str]:
+        """
+        Automatically remove harmful bullets without LLM calls.
+        
+        Returns list of removed bullet IDs.
+        """
+        return self.playbook_manager.auto_cleanup(
+            harmful_threshold=harmful_threshold,
+            effectiveness_threshold=effectiveness_threshold
+        )
+    
+    def reindex_playbook(self) -> int:
+        """
+        Re-index the playbook for retrieval.
+        
+        Call this after manual playbook modifications.
+        Returns number of bullets indexed.
+        """
+        if self.retriever:
+            playbook = self.playbook_manager.get_playbook()
+            return self.retriever.index_playbook(playbook)
+        return 0
     
     def get_playbook(self) -> Playbook:
         """Get the current playbook."""
@@ -603,3 +741,9 @@ class ACEPipeline:
     def get_playbook_stats(self) -> Dict[str, Any]:
         """Get playbook statistics."""
         return self.playbook_manager.get_playbook().get_stats()
+    
+    def get_retriever_stats(self) -> Optional[Dict[str, Any]]:
+        """Get retriever statistics."""
+        if self.retriever:
+            return self.retriever.get_stats()
+        return None

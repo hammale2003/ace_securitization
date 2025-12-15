@@ -4,7 +4,8 @@
 # Core LLM Providers
 openai>=1.0.0
 anthropic>=0.18.0
-google-generativeai>=0.3.0
+# Use a recent version so Gemini 1.5 models (e.g. gemini-1.5-pro) are available
+google-generativeai>=0.8.0
 
 # Web Framework (Streamlit)
 streamlit>=1.30.0

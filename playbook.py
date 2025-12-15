@@ -3,11 +3,13 @@ Playbook data model and management for the ACE system.
 
 The playbook is the evolving context that accumulates domain knowledge.
 Each bullet has metadata (id, helpful/harmful counts) and content.
+
+Supports operations: ADD, REMOVE, MODIFY, MERGE
 """
 import json
 import uuid
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 from datetime import datetime
 import threading
@@ -25,12 +27,28 @@ class Bullet:
     neutral_count: int = 0
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    revision_count: int = 0  # Track number of modifications
+    archived: bool = False
+    archived_at: Optional[str] = None
+    archive_reason: Optional[str] = None
+    merged_from: Optional[List[str]] = None  # IDs of bullets merged into this one
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Bullet":
+        # Handle older data without new fields
+        defaults = {
+            "revision_count": 0,
+            "archived": False,
+            "archived_at": None,
+            "archive_reason": None,
+            "merged_from": None
+        }
+        for key, default in defaults.items():
+            if key not in data:
+                data[key] = default
         return cls(**data)
     
     def mark_helpful(self):
@@ -53,9 +71,30 @@ class Bullet:
             return 0.0
         return (self.helpful_count - self.harmful_count) / total
     
+    @property
+    def total_usage(self) -> int:
+        """Total number of times this bullet was used."""
+        return self.helpful_count + self.harmful_count + self.neutral_count
+    
     def format_for_prompt(self) -> str:
         """Format bullet for inclusion in LLM prompts."""
         return f"[{self.id}] helpful={self.helpful_count} harmful={self.harmful_count} :: {self.content}"
+    
+    def archive(self, reason: str) -> None:
+        """Mark bullet as archived."""
+        self.archived = True
+        self.archived_at = datetime.utcnow().isoformat()
+        self.archive_reason = reason
+
+
+@dataclass
+class OperationResult:
+    """Result of applying a playbook operation."""
+    success: bool
+    operation_type: str
+    bullet_id: Optional[str] = None
+    message: str = ""
+    affected_bullets: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -64,26 +103,37 @@ class Playbook:
     The evolving playbook containing accumulated domain knowledge.
     
     Structured into sections: strategies, pitfalls, templates, definitions, code_snippets
+    Also maintains an archive of removed/merged bullets.
     """
     strategies: List[Bullet] = field(default_factory=list)
     pitfalls: List[Bullet] = field(default_factory=list)
     templates: List[Bullet] = field(default_factory=list)
     definitions: List[Bullet] = field(default_factory=list)
     code_snippets: List[Bullet] = field(default_factory=list)
+    archived_bullets: List[Bullet] = field(default_factory=list)  # Archive for removed bullets
     metadata: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
         if not self.metadata:
             self.metadata = {
-                "version": "1.0",
+                "version": "1.1",  # Updated version for new features
                 "created_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat(),
-                "total_updates": 0
+                "total_updates": 0,
+                "total_removes": 0,
+                "total_modifies": 0,
+                "total_merges": 0
             }
     
     def get_section(self, section_name: str) -> List[Bullet]:
         """Get bullets from a specific section."""
         return getattr(self, section_name, [])
+    
+    def _get_section_list(self, section: str) -> Optional[List[Bullet]]:
+        """Get the actual list object for a section."""
+        if section in PLAYBOOK_SECTIONS:
+            return getattr(self, section)
+        return None
     
     def add_bullet(self, section: str, content: str) -> Bullet:
         """Add a new bullet to the specified section."""
@@ -108,12 +158,185 @@ class Playbook:
         
         return bullet
     
+    def remove_bullet(self, bullet_id: str, reason: str = "Removed by Curator", 
+                      archive: bool = True) -> Optional[Bullet]:
+        """
+        Remove a bullet from the playbook.
+        
+        Args:
+            bullet_id: ID of the bullet to remove
+            reason: Reason for removal
+            archive: If True, move to archive instead of deleting
+        
+        Returns:
+            The removed bullet, or None if not found
+        """
+        for section in PLAYBOOK_SECTIONS:
+            section_list = self._get_section_list(section)
+            if section_list is None:
+                continue
+            
+            for i, bullet in enumerate(section_list):
+                if bullet.id == bullet_id:
+                    removed = section_list.pop(i)
+                    
+                    if archive:
+                        removed.archive(reason)
+                        self.archived_bullets.append(removed)
+                    
+                    self.metadata["updated_at"] = datetime.utcnow().isoformat()
+                    self.metadata["total_removes"] = self.metadata.get("total_removes", 0) + 1
+                    
+                    return removed
+        
+        return None
+    
+    def modify_bullet(self, bullet_id: str, new_content: str, 
+                      reason: str = "Modified by Curator",
+                      reset_harmful: bool = False) -> Optional[Bullet]:
+        """
+        Modify an existing bullet's content.
+        
+        Args:
+            bullet_id: ID of the bullet to modify
+            new_content: New content for the bullet
+            reason: Reason for modification (logged in metadata)
+            reset_harmful: If True, reset harmful count to 0
+        
+        Returns:
+            The modified bullet, or None if not found
+        """
+        bullet = self.get_bullet_by_id(bullet_id)
+        if bullet is None:
+            return None
+        
+        # Update content
+        bullet.content = new_content
+        bullet.updated_at = datetime.utcnow().isoformat()
+        bullet.revision_count += 1
+        
+        if reset_harmful:
+            bullet.harmful_count = 0
+        
+        self.metadata["updated_at"] = datetime.utcnow().isoformat()
+        self.metadata["total_modifies"] = self.metadata.get("total_modifies", 0) + 1
+        
+        return bullet
+    
+    def merge_bullets(self, source_ids: List[str], target_section: str, 
+                      merged_content: str, reason: str = "Merged by Curator",
+                      archive_sources: bool = True) -> Optional[Bullet]:
+        """
+        Merge multiple bullets into a single new bullet.
+        
+        Args:
+            source_ids: List of bullet IDs to merge
+            target_section: Section for the new merged bullet
+            merged_content: Content of the merged bullet
+            reason: Reason for merging
+            archive_sources: If True, archive source bullets instead of deleting
+        
+        Returns:
+            The new merged bullet, or None if operation failed
+        """
+        if len(source_ids) < 2:
+            return None
+        
+        # Collect source bullets
+        source_bullets = []
+        for bullet_id in source_ids:
+            bullet = self.get_bullet_by_id(bullet_id)
+            if bullet:
+                source_bullets.append(bullet)
+        
+        if len(source_bullets) < 2:
+            return None
+        
+        # Sum up counts from sources
+        total_helpful = sum(b.helpful_count for b in source_bullets)
+        total_harmful = sum(b.harmful_count for b in source_bullets)
+        total_neutral = sum(b.neutral_count for b in source_bullets)
+        
+        # Create new merged bullet
+        prefix = SECTION_PREFIXES.get(target_section, "unk")
+        section_list = self.get_section(target_section)
+        counter = len(section_list) + 1
+        bullet_id = f"{prefix}-{counter:05d}"
+        
+        existing_ids = {b.id for b in section_list}
+        while bullet_id in existing_ids:
+            counter += 1
+            bullet_id = f"{prefix}-{counter:05d}"
+        
+        merged_bullet = Bullet(
+            id=bullet_id,
+            content=merged_content,
+            helpful_count=total_helpful,
+            harmful_count=total_harmful,
+            neutral_count=total_neutral,
+            merged_from=source_ids
+        )
+        
+        section_list.append(merged_bullet)
+        
+        # Remove source bullets
+        for bullet_id in source_ids:
+            self.remove_bullet(bullet_id, reason=f"Merged into {merged_bullet.id}", 
+                             archive=archive_sources)
+        
+        self.metadata["updated_at"] = datetime.utcnow().isoformat()
+        self.metadata["total_merges"] = self.metadata.get("total_merges", 0) + 1
+        
+        return merged_bullet
+    
     def get_bullet_by_id(self, bullet_id: str) -> Optional[Bullet]:
         """Find a bullet by its ID across all sections."""
         for section in PLAYBOOK_SECTIONS:
             for bullet in self.get_section(section):
                 if bullet.id == bullet_id:
                     return bullet
+        return None
+    
+    def get_archived_bullet_by_id(self, bullet_id: str) -> Optional[Bullet]:
+        """Find an archived bullet by ID."""
+        for bullet in self.archived_bullets:
+            if bullet.id == bullet_id:
+                return bullet
+        return None
+    
+    def restore_bullet(self, bullet_id: str, target_section: str = None) -> Optional[Bullet]:
+        """
+        Restore an archived bullet.
+        
+        Args:
+            bullet_id: ID of the archived bullet
+            target_section: Section to restore to (uses original section by default)
+        
+        Returns:
+            The restored bullet, or None if not found
+        """
+        for i, bullet in enumerate(self.archived_bullets):
+            if bullet.id == bullet_id:
+                restored = self.archived_bullets.pop(i)
+                restored.archived = False
+                restored.archived_at = None
+                restored.archive_reason = None
+                
+                # Determine target section from ID prefix
+                if target_section is None:
+                    prefix = bullet_id.split("-")[0]
+                    for section, p in SECTION_PREFIXES.items():
+                        if p == prefix:
+                            target_section = section
+                            break
+                    target_section = target_section or "strategies"
+                
+                section_list = self._get_section_list(target_section)
+                if section_list is not None:
+                    section_list.append(restored)
+                
+                return restored
+        
         return None
     
     def update_bullet_tags(self, bullet_tags: List[Dict[str, str]]):
@@ -130,6 +353,27 @@ class Playbook:
                     bullet.mark_harmful()
                 else:
                     bullet.mark_neutral()
+    
+    def get_bullets_for_auto_removal(self, harmful_threshold: int = 5, 
+                                     effectiveness_threshold: float = -0.3) -> List[Bullet]:
+        """
+        Get bullets that should be considered for automatic removal.
+        
+        Args:
+            harmful_threshold: Minimum harmful count to trigger
+            effectiveness_threshold: Maximum effectiveness score to trigger
+        
+        Returns:
+            List of bullets that meet removal criteria
+        """
+        candidates = []
+        for section in PLAYBOOK_SECTIONS:
+            for bullet in self.get_section(section):
+                if bullet.harmful_count >= harmful_threshold:
+                    candidates.append(bullet)
+                elif bullet.effectiveness_score <= effectiveness_threshold and bullet.total_usage >= 3:
+                    candidates.append(bullet)
+        return candidates
     
     def get_all_bullets(self) -> List[Bullet]:
         """Get all bullets across all sections."""
@@ -158,7 +402,8 @@ class Playbook:
         """Get statistics about the playbook."""
         stats = {
             "total_bullets": 0,
-            "sections": {}
+            "sections": {},
+            "archived_count": len(self.archived_bullets)
         }
         for section in PLAYBOOK_SECTIONS:
             bullets = self.get_section(section)
@@ -176,6 +421,7 @@ class Playbook:
             "templates": [b.to_dict() for b in self.templates],
             "definitions": [b.to_dict() for b in self.definitions],
             "code_snippets": [b.to_dict() for b in self.code_snippets],
+            "archived_bullets": [b.to_dict() for b in self.archived_bullets],
             "metadata": self.metadata
         }
     
@@ -191,6 +437,10 @@ class Playbook:
                 section_list.append(Bullet.from_dict(bullet_data))
             setattr(playbook, section, section_list)
         
+        # Load archived bullets
+        archived_data = data.get("archived_bullets", [])
+        playbook.archived_bullets = [Bullet.from_dict(b) for b in archived_data]
+        
         playbook.metadata = data.get("metadata", {})
         return playbook
 
@@ -198,12 +448,21 @@ class Playbook:
 class PlaybookManager:
     """
     Manages playbook persistence and thread-safe operations.
+    
+    Supports all CRUD operations: ADD, REMOVE, MODIFY, MERGE
     """
     
     def __init__(self, config: PlaybookConfig = None):
         self.config = config or PlaybookConfig()
         self._playbook: Optional[Playbook] = None
         self._lock = threading.RLock()
+        
+        # Optional retriever integration
+        self._retriever = None
+    
+    def set_retriever(self, retriever) -> None:
+        """Set the retriever for embedding updates."""
+        self._retriever = retriever
     
     def load(self) -> Playbook:
         """Load playbook from disk or create empty one."""
@@ -242,37 +501,209 @@ class PlaybookManager:
                 return self.load()
             return self._playbook
     
-    def apply_operations(self, operations: List[Dict[str, Any]]) -> List[Bullet]:
+    def apply_operations(self, operations: List[Dict[str, Any]]) -> List[OperationResult]:
         """
         Apply curator operations to the playbook.
         
-        Operations format:
-        [
-            {"type": "ADD", "section": "strategies", "content": "..."},
-            ...
-        ]
+        Supports: ADD, REMOVE, MODIFY, MERGE
+        
+        Returns:
+            List of OperationResult objects
         """
-        added_bullets = []
+        results = []
         
         with self._lock:
             playbook = self.get_playbook()
             
             for op in operations:
                 op_type = op.get("type", "").upper()
-                section = op.get("section", "strategies")
-                content = op.get("content", "")
                 
-                if op_type == "ADD" and content.strip():
-                    # Validate section name
-                    if section not in PLAYBOOK_SECTIONS:
-                        section = "strategies"  # Default to strategies
-                    
-                    bullet = playbook.add_bullet(section, content.strip())
-                    added_bullets.append(bullet)
+                if op_type == "ADD":
+                    result = self._apply_add(playbook, op)
+                elif op_type == "REMOVE":
+                    result = self._apply_remove(playbook, op)
+                elif op_type == "MODIFY":
+                    result = self._apply_modify(playbook, op)
+                elif op_type == "MERGE":
+                    result = self._apply_merge(playbook, op)
+                else:
+                    result = OperationResult(
+                        success=False,
+                        operation_type=op_type,
+                        message=f"Unknown operation type: {op_type}"
+                    )
+                
+                results.append(result)
             
             self.save()
         
-        return added_bullets
+        return results
+    
+    def _apply_add(self, playbook: Playbook, op: Dict[str, Any]) -> OperationResult:
+        """Apply ADD operation."""
+        section = op.get("section", "strategies")
+        content = op.get("content", "")
+        
+        if not content.strip():
+            return OperationResult(
+                success=False,
+                operation_type="ADD",
+                message="Empty content"
+            )
+        
+        if section not in PLAYBOOK_SECTIONS:
+            section = "strategies"
+        
+        bullet = playbook.add_bullet(section, content.strip())
+        
+        # Update retriever index
+        if self._retriever:
+            self._retriever.add_bullet(
+                bullet_id=bullet.id,
+                content=bullet.content,
+                section=section
+            )
+        
+        return OperationResult(
+            success=True,
+            operation_type="ADD",
+            bullet_id=bullet.id,
+            message=f"Added bullet {bullet.id} to {section}",
+            affected_bullets=[bullet.id]
+        )
+    
+    def _apply_remove(self, playbook: Playbook, op: Dict[str, Any]) -> OperationResult:
+        """Apply REMOVE operation."""
+        bullet_id = op.get("bullet_id")
+        reason = op.get("reason", "Removed by Curator")
+        
+        if not bullet_id:
+            return OperationResult(
+                success=False,
+                operation_type="REMOVE",
+                message="No bullet_id provided"
+            )
+        
+        removed = playbook.remove_bullet(bullet_id, reason=reason, archive=True)
+        
+        if removed is None:
+            return OperationResult(
+                success=False,
+                operation_type="REMOVE",
+                bullet_id=bullet_id,
+                message=f"Bullet {bullet_id} not found"
+            )
+        
+        # Update retriever index
+        if self._retriever:
+            self._retriever.remove_bullet(bullet_id)
+        
+        return OperationResult(
+            success=True,
+            operation_type="REMOVE",
+            bullet_id=bullet_id,
+            message=f"Removed and archived bullet {bullet_id}: {reason}",
+            affected_bullets=[bullet_id]
+        )
+    
+    def _apply_modify(self, playbook: Playbook, op: Dict[str, Any]) -> OperationResult:
+        """Apply MODIFY operation."""
+        bullet_id = op.get("bullet_id")
+        new_content = op.get("new_content", "")
+        reason = op.get("reason", "Modified by Curator")
+        reset_harmful = op.get("reset_harmful", False)
+        
+        if not bullet_id or not new_content.strip():
+            return OperationResult(
+                success=False,
+                operation_type="MODIFY",
+                message="Missing bullet_id or new_content"
+            )
+        
+        modified = playbook.modify_bullet(
+            bullet_id, 
+            new_content.strip(), 
+            reason=reason,
+            reset_harmful=reset_harmful
+        )
+        
+        if modified is None:
+            return OperationResult(
+                success=False,
+                operation_type="MODIFY",
+                bullet_id=bullet_id,
+                message=f"Bullet {bullet_id} not found"
+            )
+        
+        # Update retriever index
+        if self._retriever:
+            self._retriever.update_bullet(bullet_id, new_content.strip())
+        
+        return OperationResult(
+            success=True,
+            operation_type="MODIFY",
+            bullet_id=bullet_id,
+            message=f"Modified bullet {bullet_id} (revision {modified.revision_count}): {reason}",
+            affected_bullets=[bullet_id]
+        )
+    
+    def _apply_merge(self, playbook: Playbook, op: Dict[str, Any]) -> OperationResult:
+        """Apply MERGE operation."""
+        source_ids = op.get("source_bullet_ids", [])
+        target_section = op.get("target_section", "strategies")
+        merged_content = op.get("merged_content", "")
+        reason = op.get("reason", "Merged by Curator")
+        
+        if len(source_ids) < 2:
+            return OperationResult(
+                success=False,
+                operation_type="MERGE",
+                message="Need at least 2 source bullets to merge"
+            )
+        
+        if not merged_content.strip():
+            return OperationResult(
+                success=False,
+                operation_type="MERGE",
+                message="Missing merged_content"
+            )
+        
+        if target_section not in PLAYBOOK_SECTIONS:
+            target_section = "strategies"
+        
+        merged = playbook.merge_bullets(
+            source_ids,
+            target_section,
+            merged_content.strip(),
+            reason=reason
+        )
+        
+        if merged is None:
+            return OperationResult(
+                success=False,
+                operation_type="MERGE",
+                message=f"Could not merge bullets: {source_ids}"
+            )
+        
+        # Update retriever index
+        if self._retriever:
+            for source_id in source_ids:
+                self._retriever.remove_bullet(source_id)
+            self._retriever.add_bullet(
+                bullet_id=merged.id,
+                content=merged.content,
+                section=target_section,
+                helpful_count=merged.helpful_count,
+                harmful_count=merged.harmful_count
+            )
+        
+        return OperationResult(
+            success=True,
+            operation_type="MERGE",
+            bullet_id=merged.id,
+            message=f"Merged {source_ids} into {merged.id}",
+            affected_bullets=source_ids + [merged.id]
+        )
     
     def update_tags(self, bullet_tags: List[Dict[str, str]]):
         """Update bullet tags based on reflector feedback."""
@@ -280,6 +711,32 @@ class PlaybookManager:
             playbook = self.get_playbook()
             playbook.update_bullet_tags(bullet_tags)
             self.save()
+    
+    def auto_cleanup(self, harmful_threshold: int = 5,
+                     effectiveness_threshold: float = -0.3) -> List[str]:
+        """
+        Automatically remove bullets that are consistently harmful.
+        
+        Returns list of removed bullet IDs.
+        """
+        with self._lock:
+            playbook = self.get_playbook()
+            candidates = playbook.get_bullets_for_auto_removal(
+                harmful_threshold, effectiveness_threshold
+            )
+            
+            removed_ids = []
+            for bullet in candidates:
+                reason = f"Auto-removed: harmful={bullet.harmful_count}, effectiveness={bullet.effectiveness_score:.2f}"
+                if playbook.remove_bullet(bullet.id, reason=reason, archive=True):
+                    removed_ids.append(bullet.id)
+                    if self._retriever:
+                        self._retriever.remove_bullet(bullet.id)
+            
+            if removed_ids:
+                self.save()
+            
+            return removed_ids
 
 
 def compute_semantic_similarity(text1: str, text2: str) -> float:
@@ -334,8 +791,10 @@ def deduplicate_playbook(playbook: Playbook, threshold: float = 0.85) -> List[st
                         to_remove.add(bullet1.id)
                         break
         
-        # Remove duplicates
-        section_list[:] = [b for b in section_list if b.id not in to_remove]
+        # Remove duplicates (archive them)
+        for bullet_id in to_remove:
+            playbook.remove_bullet(bullet_id, reason="Deduplicated", archive=True)
+        
         removed_ids.extend(to_remove)
     
     return removed_ids

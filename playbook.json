@@ -2,131 +2,131 @@
   "strategies": [
     {
       "id": "str-00001",
-      "content": "When assessing a true sale in securitization, ensure the following key requirements are met: 1) The transfer of assets must be absolute and not as a security for a loan; 2) The originator must relinquish control over the assets; 3) The SPV must assume the risk and rewards of ownership; 4) The sale must be in writing and properly recorded; 5) The sale must be made at arm's length and for fair value.",
+      "content": "Distinguish between 'Economic Profit' (ongoing cash flow from Excess Spread released via the Waterfall) and 'Accounting Profit' (immediate Gain on Sale recognized if the transfer qualifies as a True Sale) when analyzing transaction economics.",
       "helpful_count": 0,
       "harmful_count": 0,
       "neutral_count": 1,
-      "created_at": "2025-12-11T17:47:57.498532",
-      "updated_at": "2025-12-11T17:50:41.065584"
+      "created_at": "2025-12-15T13:28:23.326152",
+      "updated_at": "2025-12-15T13:31:13.278999",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
     },
     {
       "id": "str-00002",
-      "content": "When structuring credit enhancement for a Collateralized Loan Obligation (CLO), consider methods such as overcollateralization, subordination, and reserve accounts. The specific structure should depend on the risk profile of the underlying assets and the desired rating for the securities. Ensure the SPV's bankruptcy remoteness and avoid recharacterization as a secured loan rather than a true sale.",
+      "content": "SPV Profit Retention: Recognize that Securitization Special Purpose Vehicles (SPVs) are designed as pass-through entities for tax neutrality and bankruptcy remoteness; they generally do not retain profit. Any 'profit' remaining after liabilities are paid flows out to the Residual Certificate holder.",
       "helpful_count": 0,
       "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-11T17:50:41.072312",
-      "updated_at": "2025-12-11T17:50:41.072312"
+      "neutral_count": 1,
+      "created_at": "2025-12-15T13:28:23.327151",
+      "updated_at": "2025-12-15T13:31:13.278999",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
     },
     {
       "id": "str-00003",
-      "content": "When explaining complex legal concepts, provide detailed explanations and consider potential consequences of non-compliance. For example, discuss potential penalties, interest, and reputational damage that could result from non-compliance with tax obligations.",
-      "helpful_count": 0,
+      "content": "Search Scope & Priority: When asked to define a term, exhaustively search the provided Source/Transaction Documents. If the term is found, strictly prioritize that contractual definition over general securitization concepts, economic interpretations, or Playbook descriptions (e.g., prioritize a specific 'Profit' definition over general Excess Spread concepts). Only if the term is absent from the Source Documents should you state it is undefined.",
+      "helpful_count": 1,
       "harmful_count": 0,
-      "neutral_count": 1,
-      "created_at": "2025-12-11T18:29:40.599576",
-      "updated_at": "2025-12-11T18:36:20.901107"
-    },
-    {
-      "id": "str-00004",
-      "content": "When asked to redraft a legal clause to reflect specific legal principles or practices, provide a clear and detailed explanation of those principles or practices. This includes explaining how they operate, how they apply to the parties involved, and any conditions or limitations that apply.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-11T18:36:20.908263",
-      "updated_at": "2025-12-11T18:36:20.908263"
-    },
-    {
-      "id": "str-00005",
-      "content": "When defining complex financial terms such as 'Tranche Borrowing Base', ensure to include all of the necessary detail and specificity, even if this makes the definition longer or more complex. Simplifying the definition at the expense of accuracy can lead to misunderstandings and misinterpretations.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 1,
-      "created_at": "2025-12-12T09:59:47.601757",
-      "updated_at": "2025-12-12T10:22:02.476442"
-    },
-    {
-      "id": "str-00006",
-      "content": "When asked to provide a revised text or definition, focus on providing a concise and clear definition without any explanatory phrases, unless specifically asked for by the user.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-12T10:22:02.480422",
-      "updated_at": "2025-12-12T10:22:02.480422"
+      "neutral_count": 2,
+      "created_at": "2025-12-15T13:31:13.397474",
+      "updated_at": "2025-12-15T14:55:50.518460",
+      "revision_count": 3,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
     }
   ],
-  "pitfalls": [],
+  "pitfalls": [
+    {
+      "id": "pit-00001",
+      "content": "Definition vs. Concept Confusion: Avoid providing general economic explanations (e.g., how an SPV generates profit via excess spread) when the user is likely seeking the specific definition of a term within the document (e.g., 'Profit' as defined in the Indenture for covenant calculations).",
+      "helpful_count": 1,
+      "harmful_count": 0,
+      "neutral_count": 0,
+      "created_at": "2025-12-15T13:31:13.397684",
+      "updated_at": "2025-12-15T14:55:50.508509",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
+    },
+    {
+      "id": "pit-00002",
+      "content": "External Standard Hallucination: Avoid providing 'market standard' definitions for terms that are missing from the source text. In legal analysis, accurately reporting the absence of a definition is required; substituting external knowledge creates false certainty and legal risk.",
+      "helpful_count": 0,
+      "harmful_count": 0,
+      "neutral_count": 1,
+      "created_at": "2025-12-15T14:03:41.803292",
+      "updated_at": "2025-12-15T14:14:52.226777",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
+    },
+    {
+      "id": "pit-00003",
+      "content": "Instruction vs. Data Confusion: Treating this Playbook as the repository of deal terms. The Playbook defines *how* to answer; the Source Documents contain *what* the answer is. Never conclude a term is undefined simply because it is missing from the Playbook's internal examples.",
+      "helpful_count": 0,
+      "harmful_count": 0,
+      "neutral_count": 0,
+      "created_at": "2025-12-15T14:14:52.238822",
+      "updated_at": "2025-12-15T14:14:52.238822",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
+    }
+  ],
   "templates": [],
   "definitions": [
     {
       "id": "def-00001",
-      "content": "True Sale: A legal term used in securitization to describe the transfer of assets from the originator to the Special Purpose Vehicle (SPV). This transfer must meet certain requirements to be considered a true sale, which is crucial for the bankruptcy remoteness of the SPV.",
-      "helpful_count": 0,
+      "content": "Profit means, in respect of any person or group, the profit before tax for the most recent financial period as shown in its most recent financial accounts (being its monthly management accounts for each relevant period).",
+      "helpful_count": 1,
       "harmful_count": 0,
-      "neutral_count": 1,
-      "created_at": "2025-12-11T17:47:57.498532",
-      "updated_at": "2025-12-11T17:50:41.065584"
+      "neutral_count": 0,
+      "created_at": "2025-12-15T13:28:23.303498",
+      "updated_at": "2025-12-15T14:55:50.508509",
+      "revision_count": 1,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
     },
     {
       "id": "def-00002",
-      "content": "Credit Enhancement: A method used in securitization to improve the credit profile of a structured financial product, such as a CLO. Common methods include overcollateralization, subordination, and reserve accounts.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-11T17:50:41.072312",
-      "updated_at": "2025-12-11T17:50:41.072312"
-    },
-    {
-      "id": "def-00003",
-      "content": "Tax Clause: A provision in a securitization transaction that outlines the tax obligations of the issuer and other parties. It may cover aspects such as the payment of taxes, tax reporting, and tax indemnification. The specific obligations and circumstances will depend on the exact wording of the clause.",
+      "content": "Excess Spread: The primary driver of economic profit in a transaction, calculated as: (Interest Income from Assets) - (Interest paid to Noteholders + Servicing/Admin Fees + Credit Losses).",
       "helpful_count": 0,
       "harmful_count": 0,
       "neutral_count": 1,
-      "created_at": "2025-12-11T18:29:40.599576",
-      "updated_at": "2025-12-11T18:36:20.901107"
-    },
-    {
-      "id": "def-00004",
-      "content": "Quoted Eurobond Exemption: An exemption under Irish tax law that allows interest on a 'quoted Eurobond' to be paid without deduction of Irish withholding tax, provided the interest is paid on a relevant exchange or to a person who is not resident in Ireland.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-11T18:36:20.908263",
-      "updated_at": "2025-12-11T18:36:20.908263"
-    },
-    {
-      "id": "def-00005",
-      "content": "Section 246(3)(h) TCA Exemption: An exemption under Irish tax law that allows interest to be paid without deduction of Irish withholding tax to a company resident in an EU Member State or a country with which Ireland has a double taxation treaty, and not connected with a business in Ireland.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-11T18:36:20.908263",
-      "updated_at": "2025-12-11T18:36:20.908263"
-    },
-    {
-      "id": "def-00006",
-      "content": "Tranche Borrowing Base: A term used in securitization to refer to the pool of assets that are used as collateral for a specific tranche, such as Senior Loans or Mezzanine Notes. The specific assets included in the Tranche Borrowing Base and their valuation may vary depending on the terms of the securitization transaction and the specific tranche. The definition should include specific calculations and conditions, such as 'Monthly Payment Date', 'Funding Request Date', 'Funding Date', 'Purchase Date', '[Tranche] Advance Rate', '[Tranche] Net Eligible Receivables Balance', 'Transaction Account', 'Issuer Collections Account', 'Pre-Funding Account', 'Principal Amount Outstanding', and '[Tranche] Advance Rate Reduction Event'.",
-      "helpful_count": 2,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-12T09:59:47.601757",
-      "updated_at": "2025-12-12T10:22:02.476442"
-    },
-    {
-      "id": "def-00007",
-      "content": "'Tranche Borrowing Base': The pool of assets used as collateral for a specific tranche, including but not limited to 'Monthly Payment Date', 'Funding Request Date', 'Funding Date', 'Purchase Date', '[Tranche] Advance Rate', '[Tranche] Net Eligible Receivables Balance', 'Transaction Account', 'Issuer Collections Account', 'Pre-Funding Account', 'Principal Amount Outstanding', and '[Tranche] Advance Rate Reduction Event'.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-12T10:22:02.480422",
-      "updated_at": "2025-12-12T10:22:02.480422"
+      "created_at": "2025-12-15T13:28:23.320435",
+      "updated_at": "2025-12-15T13:31:13.278999",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
     }
   ],
   "code_snippets": [],
+  "archived_bullets": [],
   "metadata": {
-    "version": "1.0",
-    "created_at": "2025-12-11T17:47:16.394429",
-    "updated_at": "2025-12-12T10:22:02.480422",
-    "total_updates": 13
+    "version": "1.1",
+    "created_at": "2025-12-15T13:26:38.367103",
+    "updated_at": "2025-12-15T14:55:50.518460",
+    "total_updates": 8,
+    "total_removes": 0,
+    "total_modifies": 4,
+    "total_merges": 0
   }
 }

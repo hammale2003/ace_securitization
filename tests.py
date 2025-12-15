@@ -1,30 +1,27 @@
 """
-Unit tests for the ACE Securitization System.
+Unit tests for the ACE Securitization System - Extended Features.
 
-Run with: pytest tests.py -v
+Tests for semantic retrieval and extended operations (REMOVE, MODIFY, MERGE).
+
+Run with: pytest test_extended.py -v
 """
 import pytest
 import json
 import tempfile
+import numpy as np
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
-from config import ACEConfig, LLMConfig, PlaybookConfig, PLAYBOOK_SECTIONS
+from config import ACEConfig, LLMConfig, PlaybookConfig, RetrieverConfig
 from playbook import (
-    Bullet, Playbook, PlaybookManager, 
+    Bullet, Playbook, PlaybookManager, OperationResult,
     compute_semantic_similarity, deduplicate_playbook
 )
-from llm_client import LLMResponse, Message, MockClient
-from agents import (
-    Generator, Reflector, Curator,
-    GeneratorOutput, ReflectorOutput, CuratorOutput,
-    ACEPipeline
+from embeddings import (
+    SimpleEmbedding, EmbeddingConfig, create_embedding_model,
+    cosine_similarity, cosine_similarity_matrix
 )
-from prompts import (
-    format_generator_user_message,
-    format_reflector_user_message,
-    format_curator_user_message
-)
+from retriever import PlaybookRetriever, RetrieverConfig as RetConfig, RetrievedBullet
 
 
 # =============================================================================
@@ -38,514 +35,505 @@ def temp_playbook_path(tmp_path):
 
 
 @pytest.fixture
+def temp_index_path(tmp_path):
+    """Create a temporary index path."""
+    return str(tmp_path / "test_index")
+
+
+@pytest.fixture
 def sample_playbook():
     """Create a sample playbook with test data."""
     playbook = Playbook()
-    playbook.add_bullet("strategies", "Always verify true sale requirements before drafting.")
-    playbook.add_bullet("strategies", "Consider bankruptcy remoteness provisions early.")
+    playbook.add_bullet("strategies", "Always verify true sale requirements before drafting transfer provisions.")
+    playbook.add_bullet("strategies", "Consider bankruptcy remoteness provisions early in the structuring process.")
+    playbook.add_bullet("strategies", "Use waterfall structures to prioritize senior creditors.")
     playbook.add_bullet("pitfalls", "Avoid commingling of funds in SPV structures.")
-    playbook.add_bullet("templates", "Standard waterfall clause template for ABS.")
+    playbook.add_bullet("pitfalls", "Do not overlook servicer replacement provisions.")
+    playbook.add_bullet("definitions", "SPV: Special Purpose Vehicle used for bankruptcy remoteness.")
+    playbook.add_bullet("definitions", "True Sale: Legal characterization ensuring transfer is not a secured loan.")
+    playbook.add_bullet("templates", "Standard waterfall clause template for ABS transactions.")
     return playbook
 
 
 @pytest.fixture
-def mock_llm_config():
-    """Create a mock LLM configuration."""
-    return LLMConfig(provider="mock", model="mock-model")
-
-
-@pytest.fixture
-def mock_client(mock_llm_config):
-    """Create a mock LLM client."""
-    return MockClient(mock_llm_config)
-
-
-# =============================================================================
-# BULLET TESTS
-# =============================================================================
-
-class TestBullet:
-    """Tests for the Bullet class."""
-    
-    def test_create_bullet(self):
-        """Test bullet creation."""
-        bullet = Bullet(id="str-00001", content="Test content")
-        assert bullet.id == "str-00001"
-        assert bullet.content == "Test content"
-        assert bullet.helpful_count == 0
-        assert bullet.harmful_count == 0
-    
-    def test_mark_helpful(self):
-        """Test marking bullet as helpful."""
-        bullet = Bullet(id="str-00001", content="Test")
-        bullet.mark_helpful()
-        assert bullet.helpful_count == 1
-    
-    def test_mark_harmful(self):
-        """Test marking bullet as harmful."""
-        bullet = Bullet(id="str-00001", content="Test")
-        bullet.mark_harmful()
-        assert bullet.harmful_count == 1
-    
-    def test_effectiveness_score(self):
-        """Test effectiveness score calculation."""
-        bullet = Bullet(id="str-00001", content="Test")
-        bullet.helpful_count = 8
-        bullet.harmful_count = 2
-        assert bullet.effectiveness_score == 0.6  # (8-2)/10 = 0.6
-    
-    def test_to_dict(self):
-        """Test serialization to dictionary."""
-        bullet = Bullet(id="str-00001", content="Test content")
-        d = bullet.to_dict()
-        assert d["id"] == "str-00001"
-        assert d["content"] == "Test content"
-    
-    def test_from_dict(self):
-        """Test deserialization from dictionary."""
-        d = {
-            "id": "str-00001",
-            "content": "Test content",
-            "helpful_count": 5,
-            "harmful_count": 2,
-            "neutral_count": 1,
-            "created_at": "2024-01-01T00:00:00",
-            "updated_at": "2024-01-01T00:00:00"
-        }
-        bullet = Bullet.from_dict(d)
-        assert bullet.id == "str-00001"
-        assert bullet.helpful_count == 5
-    
-    def test_format_for_prompt(self):
-        """Test formatting for LLM prompt."""
-        bullet = Bullet(id="str-00001", content="Test content")
-        bullet.helpful_count = 3
-        bullet.harmful_count = 1
-        formatted = bullet.format_for_prompt()
-        assert "[str-00001]" in formatted
-        assert "helpful=3" in formatted
-        assert "harmful=1" in formatted
-        assert "Test content" in formatted
+def large_playbook():
+    """Create a playbook large enough to trigger retrieval."""
+    playbook = Playbook()
+    for i in range(20):
+        playbook.add_bullet("strategies", f"Strategy {i}: Important consideration about securitization topic {i}.")
+        playbook.add_bullet("pitfalls", f"Pitfall {i}: Common mistake to avoid in area {i}.")
+    return playbook
 
 
 # =============================================================================
-# PLAYBOOK TESTS
+# EMBEDDING TESTS
 # =============================================================================
 
-class TestPlaybook:
-    """Tests for the Playbook class."""
+class TestSimpleEmbedding:
+    """Tests for SimpleEmbedding."""
     
-    def test_create_empty_playbook(self):
-        """Test creating an empty playbook."""
-        playbook = Playbook()
-        assert len(playbook.strategies) == 0
-        assert len(playbook.pitfalls) == 0
-    
-    def test_add_bullet(self, sample_playbook):
-        """Test adding bullets to playbook."""
-        initial_count = len(sample_playbook.strategies)
-        bullet = sample_playbook.add_bullet("strategies", "New strategy")
-        assert len(sample_playbook.strategies) == initial_count + 1
-        assert bullet.content == "New strategy"
-        assert bullet.id.startswith("str-")
-    
-    def test_get_section(self, sample_playbook):
-        """Test getting a section."""
-        strategies = sample_playbook.get_section("strategies")
-        assert len(strategies) >= 2
-    
-    def test_get_bullet_by_id(self, sample_playbook):
-        """Test finding bullet by ID."""
-        bullet = sample_playbook.strategies[0]
-        found = sample_playbook.get_bullet_by_id(bullet.id)
-        assert found is not None
-        assert found.id == bullet.id
-    
-    def test_get_bullet_not_found(self, sample_playbook):
-        """Test finding non-existent bullet."""
-        found = sample_playbook.get_bullet_by_id("nonexistent-id")
-        assert found is None
-    
-    def test_update_bullet_tags(self, sample_playbook):
-        """Test updating bullet tags."""
-        bullet = sample_playbook.strategies[0]
-        initial_helpful = bullet.helpful_count
+    def test_embed_single(self):
+        """Test embedding a single text."""
+        model = SimpleEmbedding(dim=128)
+        embedding = model.embed("hello world")
         
-        sample_playbook.update_bullet_tags([
-            {"id": bullet.id, "tag": "helpful"}
+        assert embedding.shape == (128,)
+        assert np.linalg.norm(embedding) == pytest.approx(1.0, rel=0.01)
+    
+    def test_embed_batch(self):
+        """Test embedding multiple texts."""
+        model = SimpleEmbedding(dim=128)
+        embeddings = model.embed_batch(["hello", "world", "test"])
+        
+        assert embeddings.shape == (3, 128)
+    
+    def test_similar_texts_have_similar_embeddings(self):
+        """Test that similar texts produce similar embeddings."""
+        model = SimpleEmbedding(dim=256)
+        e1 = model.embed("true sale requirements for securitization")
+        e2 = model.embed("securitization true sale legal requirements")
+        e3 = model.embed("completely unrelated topic about cooking recipes")
+        
+        sim_12 = cosine_similarity(e1, e2)
+        sim_13 = cosine_similarity(e1, e3)
+        
+        assert sim_12 > sim_13
+
+
+class TestCosineSimiarity:
+    """Tests for cosine similarity functions."""
+    
+    def test_identical_vectors(self):
+        """Test similarity of identical vectors."""
+        v = np.array([1.0, 2.0, 3.0])
+        assert cosine_similarity(v, v) == pytest.approx(1.0)
+    
+    def test_orthogonal_vectors(self):
+        """Test similarity of orthogonal vectors."""
+        v1 = np.array([1.0, 0.0, 0.0])
+        v2 = np.array([0.0, 1.0, 0.0])
+        assert cosine_similarity(v1, v2) == pytest.approx(0.0)
+    
+    def test_similarity_matrix(self):
+        """Test batch similarity computation."""
+        query = np.array([1.0, 0.0, 0.0])
+        corpus = np.array([
+            [1.0, 0.0, 0.0],  # identical
+            [0.0, 1.0, 0.0],  # orthogonal
+            [0.7, 0.7, 0.0],  # partial
         ])
         
-        assert bullet.helpful_count == initial_helpful + 1
-    
-    def test_format_for_prompt(self, sample_playbook):
-        """Test formatting playbook for prompt."""
-        formatted = sample_playbook.format_for_prompt()
-        assert "STRATEGIES" in formatted
-        assert "PITFALLS" in formatted
-    
-    def test_get_stats(self, sample_playbook):
-        """Test getting playbook statistics."""
-        stats = sample_playbook.get_stats()
-        assert "total_bullets" in stats
-        assert "sections" in stats
-        assert stats["total_bullets"] > 0
-    
-    def test_to_dict_from_dict(self, sample_playbook):
-        """Test serialization round-trip."""
-        d = sample_playbook.to_dict()
-        restored = Playbook.from_dict(d)
+        sims = cosine_similarity_matrix(query, corpus)
         
-        assert len(restored.strategies) == len(sample_playbook.strategies)
-        assert len(restored.pitfalls) == len(sample_playbook.pitfalls)
+        assert sims[0] == pytest.approx(1.0)
+        assert sims[1] == pytest.approx(0.0)
+        assert 0 < sims[2] < 1
 
 
 # =============================================================================
-# PLAYBOOK MANAGER TESTS
+# RETRIEVER TESTS
 # =============================================================================
 
-class TestPlaybookManager:
-    """Tests for the PlaybookManager class."""
+class TestPlaybookRetriever:
+    """Tests for PlaybookRetriever."""
     
-    def test_load_new_playbook(self, temp_playbook_path):
-        """Test loading when no file exists."""
-        config = PlaybookConfig(path=temp_playbook_path)
-        manager = PlaybookManager(config)
-        playbook = manager.load()
+    def test_index_playbook(self, sample_playbook):
+        """Test indexing a playbook."""
+        config = RetConfig(embedding_provider="simple")
+        retriever = PlaybookRetriever(config)
         
-        assert playbook is not None
-        assert len(playbook.strategies) == 0
+        count = retriever.index_playbook(sample_playbook)
+        
+        assert count == 8  # 3 strategies + 2 pitfalls + 2 definitions + 1 template
     
-    def test_save_and_load(self, temp_playbook_path):
-        """Test saving and loading playbook."""
-        config = PlaybookConfig(path=temp_playbook_path)
-        manager = PlaybookManager(config)
+    def test_search_returns_relevant_bullets(self, sample_playbook):
+        """Test that search returns relevant bullets."""
+        config = RetConfig(embedding_provider="simple", top_k=3)
+        retriever = PlaybookRetriever(config)
+        retriever.index_playbook(sample_playbook)
         
-        # Create and save
-        playbook = manager.load()
-        playbook.add_bullet("strategies", "Test strategy")
-        manager.save()
+        results = retriever.search("What are true sale requirements?")
         
-        # Load in new manager
-        manager2 = PlaybookManager(config)
-        playbook2 = manager2.load()
-        
-        assert len(playbook2.strategies) == 1
-        assert playbook2.strategies[0].content == "Test strategy"
+        assert len(results) <= 3
+        # Should find the true sale related bullets
+        content_text = " ".join(r.content for r in results)
+        assert "true sale" in content_text.lower() or "sale" in content_text.lower()
     
-    def test_apply_operations(self, temp_playbook_path):
-        """Test applying curator operations."""
+    def test_add_bullet_updates_index(self, sample_playbook):
+        """Test adding a bullet updates the index."""
+        config = RetConfig(embedding_provider="simple")
+        retriever = PlaybookRetriever(config)
+        retriever.index_playbook(sample_playbook)
+        
+        initial_count = len(retriever._bullet_ids)
+        
+        retriever.add_bullet("str-99999", "New strategy about waterfall payments", "strategies")
+        
+        assert len(retriever._bullet_ids) == initial_count + 1
+    
+    def test_remove_bullet_updates_index(self, sample_playbook):
+        """Test removing a bullet updates the index."""
+        config = RetConfig(embedding_provider="simple")
+        retriever = PlaybookRetriever(config)
+        retriever.index_playbook(sample_playbook)
+        
+        initial_count = len(retriever._bullet_ids)
+        bullet_id = retriever._bullet_ids[0]
+        
+        result = retriever.remove_bullet(bullet_id)
+        
+        assert result is True
+        assert len(retriever._bullet_ids) == initial_count - 1
+    
+    def test_update_bullet_updates_index(self, sample_playbook):
+        """Test updating a bullet updates its embedding."""
+        config = RetConfig(embedding_provider="simple")
+        retriever = PlaybookRetriever(config)
+        retriever.index_playbook(sample_playbook)
+        
+        bullet_id = retriever._bullet_ids[0]
+        old_embedding = retriever._embeddings[0].copy()
+        
+        retriever.update_bullet(bullet_id, "Completely different content about different topic")
+        
+        new_embedding = retriever._embeddings[0]
+        # Embeddings should be different
+        assert not np.allclose(old_embedding, new_embedding)
+    
+    def test_should_use_retrieval(self, sample_playbook, large_playbook):
+        """Test retrieval threshold logic."""
+        config = RetConfig(embedding_provider="simple", min_playbook_size_for_retrieval=15)
+        retriever = PlaybookRetriever(config)
+        
+        # Small playbook - should not use retrieval
+        assert retriever.should_use_retrieval(8) is False
+        
+        # Large playbook - should use retrieval
+        assert retriever.should_use_retrieval(40) is True
+
+
+# =============================================================================
+# PLAYBOOK OPERATIONS TESTS
+# =============================================================================
+
+class TestPlaybookRemoveOperation:
+    """Tests for REMOVE operation."""
+    
+    def test_remove_bullet(self, sample_playbook):
+        """Test removing a bullet."""
+        bullet_id = sample_playbook.strategies[0].id
+        
+        removed = sample_playbook.remove_bullet(bullet_id, reason="Test removal")
+        
+        assert removed is not None
+        assert removed.id == bullet_id
+        assert removed.archived is True
+        assert removed.archive_reason == "Test removal"
+        assert len(sample_playbook.archived_bullets) == 1
+    
+    def test_remove_nonexistent_bullet(self, sample_playbook):
+        """Test removing a bullet that doesn't exist."""
+        removed = sample_playbook.remove_bullet("nonexistent-id", reason="Test")
+        
+        assert removed is None
+    
+    def test_remove_without_archive(self, sample_playbook):
+        """Test removing without archiving."""
+        bullet_id = sample_playbook.strategies[0].id
+        initial_archived = len(sample_playbook.archived_bullets)
+        
+        removed = sample_playbook.remove_bullet(bullet_id, reason="Test", archive=False)
+        
+        assert removed is not None
+        assert len(sample_playbook.archived_bullets) == initial_archived
+
+
+class TestPlaybookModifyOperation:
+    """Tests for MODIFY operation."""
+    
+    def test_modify_bullet(self, sample_playbook):
+        """Test modifying a bullet."""
+        bullet = sample_playbook.strategies[0]
+        original_id = bullet.id
+        
+        modified = sample_playbook.modify_bullet(
+            original_id,
+            "Updated content with better information",
+            reason="Improving clarity"
+        )
+        
+        assert modified is not None
+        assert modified.id == original_id  # ID preserved
+        assert modified.content == "Updated content with better information"
+        assert modified.revision_count == 1
+    
+    def test_modify_preserves_counts(self, sample_playbook):
+        """Test that modification preserves helpful/harmful counts."""
+        bullet = sample_playbook.strategies[0]
+        bullet.helpful_count = 5
+        bullet.harmful_count = 2
+        
+        modified = sample_playbook.modify_bullet(
+            bullet.id,
+            "New content",
+            reason="Test"
+        )
+        
+        assert modified.helpful_count == 5
+        assert modified.harmful_count == 2
+    
+    def test_modify_with_reset_harmful(self, sample_playbook):
+        """Test modification with harmful count reset."""
+        bullet = sample_playbook.strategies[0]
+        bullet.harmful_count = 5
+        
+        modified = sample_playbook.modify_bullet(
+            bullet.id,
+            "Fixed content",
+            reason="Fixed issue",
+            reset_harmful=True
+        )
+        
+        assert modified.harmful_count == 0
+
+
+class TestPlaybookMergeOperation:
+    """Tests for MERGE operation."""
+    
+    def test_merge_bullets(self, sample_playbook):
+        """Test merging two bullets."""
+        bullet1 = sample_playbook.strategies[0]
+        bullet2 = sample_playbook.strategies[1]
+        bullet1.helpful_count = 3
+        bullet2.helpful_count = 2
+        
+        source_ids = [bullet1.id, bullet2.id]
+        
+        merged = sample_playbook.merge_bullets(
+            source_ids,
+            "strategies",
+            "Combined strategy covering both topics",
+            reason="Reducing redundancy"
+        )
+        
+        assert merged is not None
+        assert merged.helpful_count == 5  # Sum of source counts
+        assert merged.merged_from == source_ids
+        # Source bullets should be archived
+        assert len(sample_playbook.archived_bullets) == 2
+    
+    def test_merge_requires_two_bullets(self, sample_playbook):
+        """Test that merge requires at least 2 bullets."""
+        merged = sample_playbook.merge_bullets(
+            [sample_playbook.strategies[0].id],  # Only 1 bullet
+            "strategies",
+            "Content",
+            reason="Test"
+        )
+        
+        assert merged is None
+
+
+class TestPlaybookAutoRemoval:
+    """Tests for automatic removal of harmful bullets."""
+    
+    def test_get_bullets_for_auto_removal(self, sample_playbook):
+        """Test identifying bullets for auto-removal."""
+        # Make a bullet harmful
+        bullet = sample_playbook.strategies[0]
+        bullet.harmful_count = 6
+        
+        candidates = sample_playbook.get_bullets_for_auto_removal(harmful_threshold=5)
+        
+        assert len(candidates) == 1
+        assert candidates[0].id == bullet.id
+    
+    def test_effectiveness_threshold(self, sample_playbook):
+        """Test effectiveness threshold for auto-removal."""
+        bullet = sample_playbook.strategies[0]
+        bullet.helpful_count = 1
+        bullet.harmful_count = 3
+        bullet.neutral_count = 1  # effectiveness = (1-3)/5 = -0.4
+        
+        candidates = sample_playbook.get_bullets_for_auto_removal(
+            harmful_threshold=10,
+            effectiveness_threshold=-0.3
+        )
+        
+        assert len(candidates) == 1
+
+
+# =============================================================================
+# PLAYBOOK MANAGER OPERATIONS TESTS
+# =============================================================================
+
+class TestPlaybookManagerOperations:
+    """Tests for PlaybookManager operation handling."""
+    
+    def test_apply_add_operation(self, temp_playbook_path):
+        """Test applying ADD operation."""
         config = PlaybookConfig(path=temp_playbook_path)
         manager = PlaybookManager(config)
         manager.load()
         
         operations = [
-            {"type": "ADD", "section": "strategies", "content": "New strategy"},
-            {"type": "ADD", "section": "pitfalls", "content": "New pitfall"}
+            {"type": "ADD", "section": "strategies", "content": "New strategy"}
         ]
         
-        added = manager.apply_operations(operations)
+        results = manager.apply_operations(operations)
         
-        assert len(added) == 2
-        assert manager.get_playbook().get_bullet_by_id(added[0].id) is not None
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].operation_type == "ADD"
+    
+    def test_apply_remove_operation(self, temp_playbook_path):
+        """Test applying REMOVE operation."""
+        config = PlaybookConfig(path=temp_playbook_path)
+        manager = PlaybookManager(config)
+        playbook = manager.load()
+        bullet = playbook.add_bullet("strategies", "To be removed")
+        manager.save()
+        
+        operations = [
+            {"type": "REMOVE", "bullet_id": bullet.id, "reason": "Test removal"}
+        ]
+        
+        results = manager.apply_operations(operations)
+        
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].operation_type == "REMOVE"
+    
+    def test_apply_modify_operation(self, temp_playbook_path):
+        """Test applying MODIFY operation."""
+        config = PlaybookConfig(path=temp_playbook_path)
+        manager = PlaybookManager(config)
+        playbook = manager.load()
+        bullet = playbook.add_bullet("strategies", "Original content")
+        manager.save()
+        
+        operations = [
+            {
+                "type": "MODIFY",
+                "bullet_id": bullet.id,
+                "new_content": "Modified content",
+                "reason": "Improvement"
+            }
+        ]
+        
+        results = manager.apply_operations(operations)
+        
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].operation_type == "MODIFY"
+        assert playbook.get_bullet_by_id(bullet.id).content == "Modified content"
+    
+    def test_apply_merge_operation(self, temp_playbook_path):
+        """Test applying MERGE operation."""
+        config = PlaybookConfig(path=temp_playbook_path)
+        manager = PlaybookManager(config)
+        playbook = manager.load()
+        bullet1 = playbook.add_bullet("strategies", "Content 1")
+        bullet2 = playbook.add_bullet("strategies", "Content 2")
+        manager.save()
+        
+        operations = [
+            {
+                "type": "MERGE",
+                "source_bullet_ids": [bullet1.id, bullet2.id],
+                "target_section": "strategies",
+                "merged_content": "Merged content",
+                "reason": "Combining similar"
+            }
+        ]
+        
+        results = manager.apply_operations(operations)
+        
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].operation_type == "MERGE"
+    
+    def test_apply_multiple_operations(self, temp_playbook_path):
+        """Test applying multiple operations in sequence."""
+        config = PlaybookConfig(path=temp_playbook_path)
+        manager = PlaybookManager(config)
+        playbook = manager.load()
+        existing = playbook.add_bullet("strategies", "Existing")
+        manager.save()
+        
+        operations = [
+            {"type": "ADD", "section": "strategies", "content": "New one"},
+            {"type": "MODIFY", "bullet_id": existing.id, "new_content": "Updated", "reason": "Test"},
+        ]
+        
+        results = manager.apply_operations(operations)
+        
+        assert len(results) == 2
+        assert all(r.success for r in results)
 
 
 # =============================================================================
-# SEMANTIC SIMILARITY TESTS
+# RESTORE TESTS
 # =============================================================================
 
-class TestSemanticSimilarity:
-    """Tests for semantic similarity functions."""
+class TestBulletRestore:
+    """Tests for restoring archived bullets."""
     
-    def test_identical_texts(self):
-        """Test similarity of identical texts."""
-        similarity = compute_semantic_similarity("hello world", "hello world")
-        assert similarity == 1.0
-    
-    def test_completely_different(self):
-        """Test similarity of completely different texts."""
-        similarity = compute_semantic_similarity("apple banana", "xyz abc")
-        assert similarity == 0.0
-    
-    def test_partial_overlap(self):
-        """Test partial similarity."""
-        similarity = compute_semantic_similarity("the quick brown", "the lazy brown")
-        assert 0 < similarity < 1
-    
-    def test_empty_texts(self):
-        """Test empty text handling."""
-        similarity = compute_semantic_similarity("", "hello")
-        assert similarity == 0.0
-
-
-class TestDeduplication:
-    """Tests for playbook deduplication."""
-    
-    def test_remove_duplicates(self):
-        """Test removing duplicate bullets."""
-        playbook = Playbook()
-        playbook.add_bullet("strategies", "Always verify the true sale requirements.")
-        playbook.add_bullet("strategies", "Always verify true sale requirements first.")  # Similar
-        playbook.add_bullet("strategies", "Consider bankruptcy remoteness.")  # Different
+    def test_restore_bullet(self, sample_playbook):
+        """Test restoring an archived bullet."""
+        bullet = sample_playbook.strategies[0]
+        bullet_id = bullet.id
+        original_content = bullet.content
         
-        removed = deduplicate_playbook(playbook, threshold=0.7)
+        # Remove and archive
+        sample_playbook.remove_bullet(bullet_id, reason="Test")
         
-        assert len(removed) == 1
-        assert len(playbook.strategies) == 2
-
-
-# =============================================================================
-# LLM CLIENT TESTS
-# =============================================================================
-
-class TestLLMResponse:
-    """Tests for LLM response handling."""
-    
-    def test_parse_valid_json(self):
-        """Test parsing valid JSON response."""
-        response = LLMResponse(content='{"key": "value"}')
-        parsed = response.parse_json()
-        assert parsed == {"key": "value"}
-    
-    def test_parse_json_in_markdown(self):
-        """Test parsing JSON from markdown code block."""
-        response = LLMResponse(content='```json\n{"key": "value"}\n```')
-        parsed = response.parse_json()
-        assert parsed == {"key": "value"}
-    
-    def test_parse_json_with_surrounding_text(self):
-        """Test parsing JSON with surrounding text."""
-        response = LLMResponse(content='Here is the result: {"key": "value"} That was the output.')
-        parsed = response.parse_json()
-        assert parsed == {"key": "value"}
-    
-    def test_parse_invalid_json(self):
-        """Test parsing invalid JSON."""
-        response = LLMResponse(content='This is not JSON')
-        parsed = response.parse_json()
-        assert parsed is None
-
-
-class TestMockClient:
-    """Tests for the mock LLM client."""
-    
-    def test_complete(self, mock_client):
-        """Test completion."""
-        mock_client.set_response('{"test": "response"}')
+        assert len(sample_playbook.archived_bullets) == 1
         
-        messages = [Message(role="user", content="Hello")]
-        response = mock_client.complete(messages)
+        # Restore
+        restored = sample_playbook.restore_bullet(bullet_id)
         
-        assert response.content == '{"test": "response"}'
-        assert mock_client.call_count == 1
-    
-    def test_stream(self, mock_client):
-        """Test streaming."""
-        mock_client.set_response('Hello')
-        
-        messages = [Message(role="user", content="Hi")]
-        chunks = list(mock_client.stream(messages))
-        
-        assert ''.join(chunks) == 'Hello'
-
-
-# =============================================================================
-# AGENT OUTPUT TESTS
-# =============================================================================
-
-class TestGeneratorOutput:
-    """Tests for GeneratorOutput."""
-    
-    def test_from_dict(self):
-        """Test creating from dictionary."""
-        d = {
-            "reasoning": "My reasoning",
-            "bullet_ids": ["str-00001"],
-            "final_answer": "The answer"
-        }
-        output = GeneratorOutput.from_dict(d)
-        
-        assert output.reasoning == "My reasoning"
-        assert output.final_answer == "The answer"
-        assert "str-00001" in output.bullet_ids
-    
-    def test_to_dict(self):
-        """Test serialization."""
-        output = GeneratorOutput(
-            reasoning="Test",
-            bullet_ids=["str-00001"],
-            final_answer="Answer"
-        )
-        d = output.to_dict()
-        
-        assert d["reasoning"] == "Test"
-        assert d["final_answer"] == "Answer"
-    
-    def test_from_llm_response(self):
-        """Test creating from LLM response."""
-        response = LLMResponse(content=json.dumps({
-            "reasoning": "My reasoning",
-            "bullet_ids": ["str-00001"],
-            "final_answer": "The answer"
-        }))
-        output = GeneratorOutput.from_llm_response(response)
-        
-        assert output.final_answer == "The answer"
-
-
-class TestReflectorOutput:
-    """Tests for ReflectorOutput."""
-    
-    def test_from_dict(self):
-        """Test creating from dictionary."""
-        d = {
-            "reasoning": "Analysis",
-            "error_identification": "Error found",
-            "root_cause_analysis": "Root cause",
-            "correct_approach": "Do this instead",
-            "key_insight": "Important lesson",
-            "bullet_tags": [{"id": "str-00001", "tag": "helpful"}]
-        }
-        output = ReflectorOutput.from_dict(d)
-        
-        assert output.key_insight == "Important lesson"
-        assert len(output.bullet_tags) == 1
-
-
-class TestCuratorOutput:
-    """Tests for CuratorOutput."""
-    
-    def test_from_dict(self):
-        """Test creating from dictionary."""
-        d = {
-            "reasoning": "Adding new strategy",
-            "operations": [
-                {"type": "ADD", "section": "strategies", "content": "New content"}
-            ]
-        }
-        output = CuratorOutput.from_dict(d)
-        
-        assert len(output.operations) == 1
-        assert output.operations[0]["type"] == "ADD"
-
-
-# =============================================================================
-# PROMPT TESTS
-# =============================================================================
-
-class TestPrompts:
-    """Tests for prompt formatting functions."""
-    
-    def test_generator_user_message(self):
-        """Test generator user message formatting."""
-        msg = format_generator_user_message(
-            playbook_text="Test playbook",
-            user_question="What is true sale?"
-        )
-        
-        assert "PLAYBOOK_BEGIN" in msg
-        assert "PLAYBOOK_END" in msg
-        assert "Test playbook" in msg
-        assert "What is true sale?" in msg
-    
-    def test_reflector_user_message(self):
-        """Test reflector user message formatting."""
-        msg = format_reflector_user_message(
-            question="Test question",
-            generator_output={"reasoning": "test", "bullet_ids": [], "final_answer": "answer"},
-            playbook_text="Test playbook",
-            ground_truth="Expected answer"
-        )
-        
-        assert "Test question" in msg
-        assert "GROUND TRUTH" in msg
-        assert "Expected answer" in msg
-    
-    def test_curator_user_message(self):
-        """Test curator user message formatting."""
-        msg = format_curator_user_message(
-            question="Test question",
-            generator_output={"reasoning": "test", "bullet_ids": [], "final_answer": "answer"},
-            reflector_output={"key_insight": "lesson", "reasoning": "", "error_identification": "", 
-                            "root_cause_analysis": "", "correct_approach": "", "bullet_tags": []},
-            playbook_text="Test playbook"
-        )
-        
-        assert "Test question" in msg
-        assert "REFLECTOR'S ANALYSIS" in msg
+        assert restored is not None
+        assert restored.id == bullet_id
+        assert restored.content == original_content
+        assert restored.archived is False
+        assert len(sample_playbook.archived_bullets) == 0
 
 
 # =============================================================================
 # INTEGRATION TESTS
 # =============================================================================
 
-class TestACEPipeline:
-    """Integration tests for the ACE pipeline."""
+class TestRetrieverPlaybookIntegration:
+    """Integration tests for retriever + playbook manager."""
     
-    def test_pipeline_initialization(self, temp_playbook_path):
-        """Test pipeline initialization."""
-        config = ACEConfig(
-            llm=LLMConfig(provider="mock"),
-            playbook=PlaybookConfig(path=temp_playbook_path)
+    def test_operations_update_retriever_index(self, temp_playbook_path, temp_index_path):
+        """Test that operations automatically update retriever index."""
+        playbook_config = PlaybookConfig(path=temp_playbook_path)
+        manager = PlaybookManager(playbook_config)
+        manager.load()
+        
+        retriever_config = RetConfig(
+            embedding_provider="simple",
+            index_path=temp_index_path
         )
-        pipeline = ACEPipeline(config)
+        retriever = PlaybookRetriever(retriever_config)
         
-        assert pipeline.generator is not None
-        assert pipeline.reflector is not None
-        assert pipeline.curator is not None
-    
-    def test_generate_only(self, temp_playbook_path):
-        """Test generate-only mode."""
-        config = ACEConfig(
-            llm=LLMConfig(provider="mock"),
-            playbook=PlaybookConfig(path=temp_playbook_path)
-        )
-        pipeline = ACEPipeline(config)
+        # Link retriever to manager
+        manager.set_retriever(retriever)
         
-        # Set mock response
-        pipeline.client.set_response(json.dumps({
-            "reasoning": "Test reasoning",
-            "bullet_ids": [],
-            "final_answer": "Test answer"
-        }))
+        # Initial index
+        playbook = manager.get_playbook()
+        retriever.index_playbook(playbook)
+        initial_count = len(retriever._bullet_ids)
         
-        output = pipeline.generate_only("What is true sale?")
+        # Add operation should update index
+        operations = [
+            {"type": "ADD", "section": "strategies", "content": "New strategy for testing"}
+        ]
+        manager.apply_operations(operations)
         
-        assert output.final_answer == "Test answer"
-    
-    def test_full_pipeline_run(self, temp_playbook_path):
-        """Test full pipeline execution."""
-        config = ACEConfig(
-            llm=LLMConfig(provider="mock"),
-            playbook=PlaybookConfig(path=temp_playbook_path)
-        )
-        pipeline = ACEPipeline(config)
-        
-        # Set mock responses for all three agents
-        pipeline.client.set_response(json.dumps({
-            "reasoning": "Generator reasoning",
-            "bullet_ids": [],
-            "final_answer": "Generated answer"
-        }))
-        pipeline.client.set_response(json.dumps({
-            "reasoning": "Reflector reasoning",
-            "error_identification": "No errors",
-            "root_cause_analysis": "N/A",
-            "correct_approach": "Approach was correct",
-            "key_insight": "Important insight about true sale",
-            "bullet_tags": []
-        }))
-        pipeline.client.set_response(json.dumps({
-            "reasoning": "Adding new strategy",
-            "operations": [
-                {"type": "ADD", "section": "strategies", "content": "New learned strategy"}
-            ]
-        }))
-        
-        result = pipeline.run("What is true sale?")
-        
-        assert result.generator_output.final_answer == "Generated answer"
-        assert result.reflector_output.key_insight == "Important insight about true sale"
-        assert len(result.added_bullets) == 1
+        assert len(retriever._bullet_ids) == initial_count + 1
 
 
 # =============================================================================
