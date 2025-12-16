@@ -79,9 +79,6 @@ Your output must be valid JSON. Do not include any text before or after the JSON
 REFORMULATION_ENRICH_USER_TEMPLATE = """CLAUSE TO ENRICH:
 {clause}
 
-REFERENCE CLAUSE (Canon):
-{reference_clause}
-
 PLAYBOOK CONTEXT:
 {playbook_context}
 
@@ -176,9 +173,6 @@ Your output must be valid JSON. Do not include any text before or after the JSON
 REFORMULATION_DERIVE_USER_TEMPLATE = """CLAUSE TO DERIVE FROM:
 {clause}
 
-REFERENCE CLAUSE (Canon):
-{reference_clause}
-
 CONSTRAINTS/RULES:
 {constraints}
 
@@ -231,9 +225,6 @@ Your output must be valid JSON. Do not include any text before or after the JSON
 REFORMULATION_REMEDIATE_USER_TEMPLATE = """CLAUSE TO REMEDIATE:
 {clause}
 
-REFERENCE CLAUSE (Canon):
-{reference_clause}
-
 IDENTIFIED ISSUES:
 {issues}
 
@@ -285,9 +276,6 @@ Your output must be valid JSON. Do not include any text before or after the JSON
 
 REFORMULATION_EXPLORE_USER_TEMPLATE = """CLAUSE TO REFORMULATE:
 {clause}
-
-REFERENCE CLAUSE (Canon):
-{reference_clause}
 
 USER REQUEST:
 {user_prompt}
@@ -506,7 +494,6 @@ def get_reformulation_user_template(mode: str) -> str:
 def format_reformulation_user_message(
     mode: str,
     clause: str,
-    reference_clause: str = "",
     playbook_context: str = "",
     additional_instructions: str = "",
     # Mode-specific parameters
@@ -520,7 +507,6 @@ def format_reformulation_user_message(
     Args:
         mode: One of "enrich", "derive", "remediate", "explore"
         clause: The clause to reformulate
-        reference_clause: The Canon/reference clause
         playbook_context: Relevant playbook bullets
         additional_instructions: Any extra instructions
         constraints: Constraints for derive mode
@@ -534,7 +520,6 @@ def format_reformulation_user_message(
     
     # Common replacements
     message = template.replace("{clause}", clause)
-    message = message.replace("{reference_clause}", reference_clause or "(No reference clause provided)")
     message = message.replace("{playbook_context}", playbook_context or "(No playbook context)")
     message = message.replace("{additional_instructions}", additional_instructions or "None")
     

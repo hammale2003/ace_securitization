@@ -43,8 +43,16 @@ class InitializeRequest(BaseModel):
 class QuestionRequest(BaseModel):
     """Request model for submitting a question."""
     question: str
+    mode: str = "answer"  # answer, enrich, derive, remediate, explore
+    output_format: str = "text"  # text or prosemirror
     ground_truth: Optional[str] = None
     feedback: Optional[str] = None
+    # Reformulation parameters
+    reference_clause: Optional[str] = None
+    constraints: Optional[str] = None
+    issues: Optional[str] = None
+    user_prompt: Optional[str] = None
+    additional_instructions: Optional[str] = None
     full_pipeline: bool = True
     stream: bool = False
 
@@ -52,6 +60,14 @@ class QuestionRequest(BaseModel):
 class GenerateRequest(BaseModel):
     """Request model for generation only."""
     question: str
+    mode: str = "answer"  # answer, enrich, derive, remediate, explore
+    output_format: str = "text"  # text or prosemirror
+    # Reformulation parameters
+    reference_clause: Optional[str] = None
+    constraints: Optional[str] = None
+    issues: Optional[str] = None
+    user_prompt: Optional[str] = None
+    additional_instructions: Optional[str] = None
     stream: bool = False
 
 
@@ -75,6 +91,8 @@ class GeneratorResponse(BaseModel):
     reasoning: str
     bullet_ids: list
     final_answer: str
+    final_answer_prosemirror: Optional[dict] = None
+    reformulation_result: Optional[dict] = None
 
 
 class ReflectorResponse(BaseModel):
@@ -85,6 +103,9 @@ class ReflectorResponse(BaseModel):
     correct_approach: str
     key_insight: str
     bullet_tags: list
+    extracted_strategies: Optional[list] = None
+    extracted_pitfalls: Optional[list] = None
+    ground_truth_definition: Optional[str] = None
 
 
 class CuratorResponse(BaseModel):
@@ -96,6 +117,8 @@ class CuratorResponse(BaseModel):
 class PipelineResponse(BaseModel):
     """Response model for full pipeline execution."""
     question: str
+    mode: str
+    output_format: str
     generator_output: GeneratorResponse
     reflector_output: Optional[ReflectorResponse]
     curator_output: Optional[CuratorResponse]
@@ -231,23 +254,41 @@ async def generate(request: GenerateRequest):
     try:
         if request.stream:
             return StreamingResponse(
-                stream_generate(request.question),
+                stream_generate(request),
                 media_type="text/event-stream"
             )
         
-        output = app_state.pipeline.generate_only(request.question)
+        # Build kwargs based on mode
+        kwargs = {
+            "output_format": request.output_format
+        }
+        
+        if request.mode != "answer":
+            kwargs["mode"] = request.mode
+            kwargs["additional_instructions"] = request.additional_instructions or ""
+            
+            if request.mode == "derive" and request.constraints:
+                kwargs["constraints"] = request.constraints
+            elif request.mode == "remediate" and request.issues:
+                kwargs["issues"] = request.issues
+            elif request.mode == "explore" and request.user_prompt:
+                kwargs["user_prompt"] = request.user_prompt
+        
+        output = app_state.pipeline.generate_only(request.question, **kwargs)
         
         return GeneratorResponse(
             reasoning=output.reasoning,
             bullet_ids=output.bullet_ids,
-            final_answer=output.final_answer
+            final_answer=output.final_answer,
+            final_answer_prosemirror=output.final_answer_prosemirror if hasattr(output, 'final_answer_prosemirror') else None,
+            reformulation_result=output.reformulation_result if hasattr(output, 'reformulation_result') else None
         )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def stream_generate(question: str) -> AsyncGenerator[str, None]:
+async def stream_generate(request: GenerateRequest) -> AsyncGenerator[str, None]:
     """Stream generator output using SSE."""
     collected_response = ""
     
@@ -257,11 +298,28 @@ async def stream_generate(question: str) -> AsyncGenerator[str, None]:
     
     loop = asyncio.get_event_loop()
     
+    # Build kwargs based on mode
+    kwargs = {
+        "output_format": request.output_format,
+        "stream_callback": stream_callback
+    }
+    
+    if request.mode != "answer":
+        kwargs["mode"] = request.mode
+        kwargs["additional_instructions"] = request.additional_instructions or ""
+        
+        if request.mode == "derive" and request.constraints:
+            kwargs["constraints"] = request.constraints
+        elif request.mode == "remediate" and request.issues:
+            kwargs["issues"] = request.issues
+        elif request.mode == "explore" and request.user_prompt:
+            kwargs["user_prompt"] = request.user_prompt
+    
     output = await loop.run_in_executor(
         None,
         lambda: app_state.pipeline.generate_only(
-            question,
-            stream_callback=stream_callback
+            request.question,
+            **kwargs
         )
     )
     
@@ -281,17 +339,36 @@ async def run_pipeline(request: QuestionRequest):
                 media_type="text/event-stream"
             )
         
+        # Build kwargs based on mode
+        kwargs = {
+            "ground_truth": request.ground_truth,
+            "feedback": request.feedback,
+            "output_format": request.output_format
+        }
+        
+        if request.mode != "answer":
+            kwargs["mode"] = request.mode
+            kwargs["additional_instructions"] = request.additional_instructions or ""
+            
+            if request.mode == "derive" and request.constraints:
+                kwargs["constraints"] = request.constraints
+            elif request.mode == "remediate" and request.issues:
+                kwargs["issues"] = request.issues
+            elif request.mode == "explore" and request.user_prompt:
+                kwargs["user_prompt"] = request.user_prompt
+        
         result = app_state.pipeline.run(
             question=request.question,
-            ground_truth=request.ground_truth,
-            feedback=request.feedback
+            **kwargs
         )
         
         return PipelineResponse(
             question=result.question,
+            mode=request.mode,
+            output_format=request.output_format,
             generator_output=GeneratorResponse(**result.generator_output.to_dict()),
-            reflector_output=ReflectorResponse(**result.reflector_output.to_dict()),
-            curator_output=CuratorResponse(**result.curator_output.to_dict()),
+            reflector_output=ReflectorResponse(**result.reflector_output.to_dict()) if result.reflector_output else None,
+            curator_output=CuratorResponse(**result.curator_output.to_dict()) if result.curator_output else None,
             added_bullets=[b.to_dict() for b in result.added_bullets],
             playbook_stats=PlaybookStatsResponse(**{
                 "total_bullets": result.playbook_stats.get("total_bullets", 0),
@@ -322,14 +399,31 @@ async def stream_pipeline(request: QuestionRequest) -> AsyncGenerator[str, None]
             "curator": make_callback("curator")
         }
         
+        # Build kwargs based on mode
+        kwargs = {
+            "ground_truth": request.ground_truth,
+            "feedback": request.feedback,
+            "output_format": request.output_format,
+            "stream_callbacks": callbacks
+        }
+        
+        if request.mode != "answer":
+            kwargs["mode"] = request.mode
+            kwargs["additional_instructions"] = request.additional_instructions or ""
+            
+            if request.mode == "derive" and request.constraints:
+                kwargs["constraints"] = request.constraints
+            elif request.mode == "remediate" and request.issues:
+                kwargs["issues"] = request.issues
+            elif request.mode == "explore" and request.user_prompt:
+                kwargs["user_prompt"] = request.user_prompt
+        
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
             lambda: app_state.pipeline.run(
                 question=request.question,
-                ground_truth=request.ground_truth,
-                feedback=request.feedback,
-                stream_callbacks=callbacks
+                **kwargs
             )
         )
         
@@ -338,8 +432,10 @@ async def stream_pipeline(request: QuestionRequest) -> AsyncGenerator[str, None]
     result = await run_with_streaming()
     
     yield f"data: {json.dumps({'type': 'generator', 'data': result.generator_output.to_dict()})}\n\n"
-    yield f"data: {json.dumps({'type': 'reflector', 'data': result.reflector_output.to_dict()})}\n\n"
-    yield f"data: {json.dumps({'type': 'curator', 'data': result.curator_output.to_dict()})}\n\n"
+    if result.reflector_output:
+        yield f"data: {json.dumps({'type': 'reflector', 'data': result.reflector_output.to_dict()})}\n\n"
+    if result.curator_output:
+        yield f"data: {json.dumps({'type': 'curator', 'data': result.curator_output.to_dict()})}\n\n"
     yield f"data: {json.dumps({'type': 'complete', 'data': result.to_dict()})}\n\n"
 
 
