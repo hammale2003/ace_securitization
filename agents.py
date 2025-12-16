@@ -380,7 +380,6 @@ class Generator:
         user_message = format_reformulation_user_message(
             mode=mode,
             clause=clause,
-            reference_clause=reference_clause,
             playbook_context=playbook_context,
             additional_instructions=additional_instructions,
             constraints=constraints,
