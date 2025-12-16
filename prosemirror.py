@@ -381,3 +381,76 @@ def create_definition_prosemirror(term: str, definition: str) -> Dict[str, Any]:
     """
     builder = ProseMirrorBuilder()
     return builder.definition_to_doc(term, definition)
+
+
+def create_structured_definition_with_slot(
+    term: str,
+    intro_text: str,
+    sub_clauses: List[str],
+    terms_list: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Create a structured definition with enumerated sub-clauses using slots.
+    
+    This format is used for legal definitions with (a), (b), (c) sub-clauses.
+    
+    Args:
+        term: The term being defined (e.g., "Account Bank Event")
+        intro_text: The introductory text before the enumeration (e.g., "means, in respect of...")
+        sub_clauses: List of sub-clause texts (e.g., ["the occurrence of...", "it being or becoming..."])
+        terms_list: Optional list of all terms being defined (defaults to [term])
+    
+    Returns:
+        Structured content with main_clause and sub_clauses arrays
+        
+    Example:
+        term = "Account Bank Event"
+        intro_text = "means, in respect of an Issuer Account Bank or Collections Account Bank, any of:"
+        sub_clauses = [
+            "(a) the occurrence of an Insolvency Event;",
+            "(b) it being or becoming subject to Insolvency Proceedings;"
+        ]
+        
+        Returns structure suitable for reformulation output with slots.
+    """
+    if terms_list is None:
+        terms_list = [term]
+    
+    # Build main clause body_doc with slot
+    main_body = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "\""},
+                    {"type": "text", "text": term, "marks": [{"type": "strong"}]},
+                    {"type": "text", "text": "\" " + intro_text}
+                ]
+            },
+            {
+                "type": "slot",
+                "attrs": {"name": "sub_clauses"}
+            }
+        ]
+    }
+    
+    # Build sub_clauses array (no metadata, just ProseMirror docs)
+    sub_clause_objects = []
+    for clause_text in sub_clauses:
+        sub_clause_objects.append({
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": clause_text}
+                    ]
+                }
+            ]
+        })
+    
+    return {
+        "main_clause": main_body,
+        "sub_clauses": sub_clause_objects
+    }

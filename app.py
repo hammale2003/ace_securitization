@@ -1,27 +1,22 @@
 """
 Streamlit Web Interface for the ACE Securitization System.
 
-Provides a user-friendly interface for:
-- Asking securitization questions
-- Viewing Generator, Reflector, and Curator outputs
-- Exploring and managing the playbook
-- Choosing output format (text or ProseMirror JSON)
+Generator with integrated modes:
+- answer: Standard Q&A using playbook
+- enrich: Expand clause without changing meaning
+- derive: Generate variants under constraints
+- remediate: Fix compliance issues
+- explore: Open-ended reformulation
 """
 import streamlit as st
 import json
 import time
 from typing import Optional
-from pathlib import Path
 
-# Import ACE components
 from config import ACEConfig, LLMConfig, PlaybookConfig
 from playbook import PlaybookManager, Playbook, deduplicate_playbook
 from agents import ACEPipeline, GeneratorOutput, ReflectorOutput, CuratorOutput
 
-
-# =============================================================================
-# PAGE CONFIGURATION
-# =============================================================================
 
 st.set_page_config(
     page_title="ACE Securitization",
@@ -30,9 +25,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# =============================================================================
-# SESSION STATE INITIALIZATION
-# =============================================================================
 
 def init_session_state():
     """Initialize session state variables."""
@@ -46,20 +38,18 @@ def init_session_state():
         st.session_state.config = None
     if "output_format" not in st.session_state:
         st.session_state.output_format = "text"
+    if "mode" not in st.session_state:
+        st.session_state.mode = "answer"
 
 
 init_session_state()
 
 
-# =============================================================================
-# SIDEBAR - CONFIGURATION
-# =============================================================================
-
 def render_sidebar():
     """Render the configuration sidebar."""
     st.sidebar.title("Configuration")
     
-    # LLM Provider Selection
+    # LLM Settings
     st.sidebar.subheader("LLM Settings")
     
     provider = st.sidebar.selectbox(
@@ -69,7 +59,6 @@ def render_sidebar():
         help="Select the LLM provider"
     )
     
-    # Model selection based on provider
     model_options = {
         "openai": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o"],
         "anthropic": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
@@ -83,55 +72,48 @@ def render_sidebar():
         index=0
     )
     
-    # API Key input
     api_key = st.sidebar.text_input(
         "API Key",
         type="password",
-        help="Enter your API key (leave blank to use environment variable)"
+        help="Leave blank to use environment variable"
     )
     
-    # Temperature
     temperature = st.sidebar.slider(
         "Temperature",
         min_value=0.0,
         max_value=1.0,
         value=0.0,
-        step=0.1,
-        help="Lower = more deterministic, Higher = more creative"
+        step=0.1
     )
     
-    # Max Tokens
     max_tokens = st.sidebar.number_input(
         "Max Tokens",
         min_value=1,
         max_value=32000,
         value=4096,
-        step=256,
-        help="Maximum number of tokens in the response"
+        step=256
     )
     
-    # Enable streaming
     enable_streaming = st.sidebar.checkbox(
         "Enable Streaming",
-        value=True,
-        help="Stream tokens in real-time (provider must support it)"
+        value=True
     )
     
     st.sidebar.divider()
     
-    # Output Format Selection
+    # Output Format
     st.sidebar.subheader("Output Format")
     
     output_format = st.sidebar.radio(
         "Response Format",
         options=["text", "prosemirror"],
         index=0 if st.session_state.output_format == "text" else 1,
-        help="Choose output format: 'text' for plain text, 'prosemirror' for ProseMirror JSON (for document editors)"
+        help="text = plain text, prosemirror = JSON for editors"
     )
     st.session_state.output_format = output_format
     
     if output_format == "prosemirror":
-        st.sidebar.info("📄 ProseMirror JSON format enabled. The response will include structured document JSON suitable for rich text editors.")
+        st.sidebar.info("ProseMirror JSON enabled")
     
     st.sidebar.divider()
     
@@ -140,8 +122,7 @@ def render_sidebar():
     
     playbook_path = st.sidebar.text_input(
         "Playbook Path",
-        value="playbook.json",
-        help="Path to the playbook JSON file"
+        value="playbook.json"
     )
     
     # ACE Settings
@@ -151,14 +132,13 @@ def render_sidebar():
         "Max Reflector Iterations",
         min_value=1,
         max_value=10,
-        value=3,
-        help="Number of refinement iterations for the Reflector"
+        value=3
     )
     
-    # Initialize Pipeline Button
     st.sidebar.divider()
     
-    if st.sidebar.button("Initialize Pipeline", type="primary", use_container_width=True):
+    # Initialize Pipeline
+    if st.sidebar.button(" Initialize Pipeline", type="primary", use_container_width=True):
         try:
             llm_config = LLMConfig(
                 provider=provider,
@@ -185,337 +165,213 @@ def render_sidebar():
         except Exception as e:
             st.sidebar.error(f"Error: {str(e)}")
     
-    # Show pipeline status
+    # Status
     if st.session_state.pipeline:
         st.sidebar.success("Pipeline: Active")
         stats = st.session_state.pipeline.get_playbook_stats()
         st.sidebar.metric("Total Bullets", stats.get("total_bullets", 0))
-        st.sidebar.caption(f"Output Format: **{st.session_state.output_format}**")
+        
+        mode_labels = {
+            "answer": "Q&A",
+            "enrich": "Enrich",
+            "derive": "Derive",
+            "remediate": "Remediate",
+            "explore": "Explore"
+        }
+        mode_label = mode_labels.get(st.session_state.mode, st.session_state.mode)
+        st.sidebar.caption(f"Mode: **{mode_label}**")
+        st.sidebar.caption(f"Output: **{st.session_state.output_format}**")
     else:
         st.sidebar.warning("Pipeline: Not initialized")
 
 
-# =============================================================================
-# MAIN CONTENT
-# =============================================================================
-
 def render_header():
-    """Render the main header."""
-    st.title("📜 ACE Securitization System")
+    """Render main header."""
+    st.title("ACE Securitization System")
+    st.caption("Advanced Clause Engine with Multi-Mode Generation")
 
-def render_question_input():
-    """Render the question input section."""
-    st.subheader("Ask a Question")
+
+def render_input():
+    """Render unified input section with mode selector."""
+    st.subheader("Generator")
     
-    question = st.text_area(
-        "Enter your securitization question:",
-        value="",
-        height=100,
-        placeholder="e.g., What are the essential elements of a true sale opinion?"
+    # Mode selector with descriptions
+    mode_options = {
+        "answer": "**Answer** - Standard Q&A using playbook knowledge",
+        "enrich": "**Enrich** - Expand clause without changing legal meaning",
+        "derive": "**Derive** - Generate variants under specific constraints",
+        "remediate": "**Remediate** - Fix compliance issues and restore alignment",
+        "explore": "**Explore** - Open-ended reformulation with custom instructions"
+    }
+    
+    mode = st.radio(
+        "Select Mode:",
+        options=list(mode_options.keys()),
+        format_func=lambda x: mode_options[x],
+        horizontal=True,
+        key="mode_radio"
     )
+    st.session_state.mode = mode
     
-    # Optional ground truth for training
-    ground_truth = None
-    feedback = None
+    st.divider()
     
-    with st.expander("Training Options (Optional)"):
-        ground_truth = st.text_area(
-            "Ground Truth / Expected Answer:",
-            height=100,
-            help="If you know the correct answer, enter it here to improve the Reflector's analysis."
+    # Common inputs
+    if mode == "answer":
+        # Q&A mode
+        question = st.text_area(
+            "Question:",
+            height=120,
+            placeholder="e.g., What are the essential elements of a true sale opinion?",
+            key="input_main"
         )
         
-        feedback = st.text_area(
-            "Additional Feedback:",
-            height=50,
-            help="Any specific feedback or guidance for this question."
+        # Training options
+        with st.expander("Training Options (Optional)"):
+            ground_truth = st.text_area(
+                "Expected Answer:",
+                height=100,
+                help="Provide the correct answer to improve Reflector analysis",
+                key="input_ground_truth"
+            )
+            
+            feedback = st.text_area(
+                "Additional Feedback:",
+                height=50,
+                key="input_feedback"
+            )
+        
+        # Reformulation params (empty for answer mode)
+        reference_clause = ""
+        constraints = ""
+        issues = ""
+        user_prompt = ""
+        additional_instructions = ""
+        
+    else:
+        # Reformulation modes
+        question = st.text_area(
+            "Clause to Reformulate:",
+            height=150,
+            placeholder="Paste the clause you want to reformulate...",
+            key="input_main"
         )
+        
+        reference_clause = st.text_area(
+            "Reference Clause (Canon) - Optional:",
+            height=100,
+            placeholder="Paste the Canon/reference clause for comparison...",
+            key="input_reference"
+        )
+        
+        # Mode-specific inputs
+        if mode == "derive":
+            st.markdown("**Constraints:**")
+            constraints = st.text_area(
+                "Specify constraints/rules:",
+                height=80,
+                placeholder="e.g., 'Must include 5-day grace period' or '[if all issuer accounts are in the EU] [if accounts span multiple jurisdictions]'",
+                key="input_constraints"
+            )
+            issues = ""
+            user_prompt = ""
+            
+        elif mode == "remediate":
+            st.markdown("**Issues to Fix:**")
+            issues = st.text_area(
+                "Identify problems:",
+                height=80,
+                placeholder="e.g., 'Ambiguous language undermines true sale', 'Missing materiality threshold', 'Inconsistent defined terms'",
+                key="input_issues"
+            )
+            constraints = ""
+            user_prompt = ""
+            
+        elif mode == "explore":
+            st.markdown("**Your Request:**")
+            user_prompt = st.text_area(
+                "What would you like to do?",
+                height=80,
+                placeholder="e.g., 'Make this simpler', 'Add fallback provisions', 'Soften the tone', 'Draft UK-style version'",
+                key="input_user_prompt"
+            )
+            constraints = ""
+            issues = ""
+            
+        else:  # enrich
+            constraints = ""
+            issues = ""
+            user_prompt = ""
+        
+        # Additional instructions for all reformulation modes
+        with st.expander("Additional Instructions (Optional)"):
+            additional_instructions = st.text_area(
+                "Extra guidance:",
+                height=60,
+                placeholder="Any additional context or requirements...",
+                key="input_additional"
+            )
+        
+        # Training options for reformulation modes
+        with st.expander("Training Options (Optional)"):
+            ground_truth = st.text_area(
+                "Expected Reformulation:",
+                height=100,
+                help="Provide the correct/ideal reformulation to improve Reflector analysis",
+                key="input_ground_truth"
+            )
+            
+            feedback = st.text_area(
+                "Additional Feedback:",
+                height=50,
+                help="Any specific guidance for this reformulation",
+                key="input_feedback"
+            )
     
+    # Action buttons
     col1, col2, col3 = st.columns([1, 1, 2])
     
     with col1:
-        run_full = st.button("Run Full Pipeline", type="primary", use_container_width=True)
+        run_full = st.button(
+            "Run Full Pipeline",
+            type="primary",
+            use_container_width=True,
+            help="Run Generator → Reflector → Curator"
+        )
     
     with col2:
-        generate_only = st.button("Generate Only", use_container_width=True)
+        generate_only = st.button(
+            "Generate Only",
+            use_container_width=True,
+            help="Run Generator only (skip Reflector & Curator)"
+        )
     
-    return question, ground_truth, feedback, run_full, generate_only
+    return {
+        "question": question,
+        "mode": mode,
+        "ground_truth": ground_truth,
+        "feedback": feedback,
+        "reference_clause": reference_clause,
+        "constraints": constraints,
+        "issues": issues,
+        "user_prompt": user_prompt,
+        "additional_instructions": additional_instructions or "",
+        "run_full": run_full,
+        "generate_only": generate_only
+    }
 
 
-def render_results():
-    """Render the results section."""
-    if st.session_state.current_result is None:
-        st.info("Submit a question to see results here.")
-        return
-    
-    result = st.session_state.current_result
-    
-    # Create tabs for different outputs
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "Generator", 
-        "Reflector", 
-        "Curator",
-        "Playbook"
-    ])
-    
-    with tab1:
-        render_generator_output(result.get("generator_output"))
-    
-    with tab2:
-        render_reflector_output(result.get("reflector_output"))
-    
-    with tab3:
-        render_curator_output(result.get("curator_output"), result.get("added_bullets", []))
-    
-    with tab4:
-        render_playbook_view()
-
-
-def render_generator_output(output: Optional[dict]):
-    """Render the Generator's output."""
-    st.subheader("Generator Output")
-    
-    if not output:
-        st.warning("No generator output available.")
-        return
-    
-    # Final Answer
-    st.markdown("### Final Answer")
-    st.markdown(output.get("final_answer", "No answer generated."))
-    
-    # ProseMirror JSON output (if available)
-    prosemirror_output = output.get("final_answer_prosemirror")
-    if prosemirror_output:
-        with st.expander("ProseMirror JSON", expanded=False):
-            st.json(prosemirror_output)
-            
-            # Add copy button
-            prosemirror_json_str = json.dumps(prosemirror_output, indent=2)
-            st.download_button(
-                label="Download ProseMirror JSON",
-                data=prosemirror_json_str,
-                file_name="answer_prosemirror.json",
-                mime="application/json"
-            )
-    
-    # Reasoning
-    with st.expander("Reasoning", expanded=True):
-        st.markdown(output.get("reasoning", "No reasoning provided."))
-    
-    # Bullet IDs used
-    bullet_ids = output.get("bullet_ids", [])
-    if bullet_ids:
-        st.markdown("### Playbook Bullets Used")
-        for bid in bullet_ids:
-            st.code(bid)
-    else:
-        st.info("No playbook bullets were referenced.")
-
-
-def render_reflector_output(output: Optional[dict]):
-    """Render the Reflector's output."""
-    st.subheader("Reflector Analysis")
-    
-    if not output:
-        st.warning("No reflector output available.")
-        return
-    
-    # Key Insight
-    st.markdown("### Key Insight")
-    st.info(output.get("key_insight", "No key insight extracted."))
-    
-    # Error Identification
-    with st.expander("Error Identification", expanded=True):
-        st.markdown(output.get("error_identification", "No errors identified."))
-    
-    # Root Cause Analysis
-    with st.expander("Root Cause Analysis"):
-        st.markdown(output.get("root_cause_analysis", "No root cause analysis provided."))
-    
-    # Correct Approach
-    with st.expander("Correct Approach"):
-        st.markdown(output.get("correct_approach", "No correct approach suggested."))
-    
-    # Full Reasoning
-    with st.expander("Full Reasoning"):
-        st.markdown(output.get("reasoning", "No reasoning provided."))
-    
-    # Bullet Tags
-    bullet_tags = output.get("bullet_tags", [])
-    if bullet_tags:
-        st.markdown("### Bullet Tags")
-        for tag in bullet_tags:
-            tag_color = {"helpful": "[+]", "harmful": "[-]", "neutral": "[~]"}.get(tag.get("tag"), "[~]")
-            st.markdown(f"{tag_color} `{tag.get('id')}`: {tag.get('tag')}")
-
-
-def render_curator_output(output: Optional[dict], added_bullets: list):
-    """Render the Curator's output."""
-    st.subheader("Curator Updates")
-    
-    if not output:
-        st.warning("No curator output available.")
-        return
-    
-    # Reasoning
-    with st.expander("Curator's Reasoning", expanded=True):
-        st.markdown(output.get("reasoning", "No reasoning provided."))
-    
-    # Operations
-    operations = output.get("operations", [])
-    
-    if operations:
-        st.markdown("### Planned Operations")
-        for i, op in enumerate(operations, 1):
-            op_type = op.get('type', 'UNKNOWN')
-            op_icon = {"ADD": "[+]", "REMOVE": "[-]", "MODIFY": "[*]", "MERGE": "[M]"}.get(op_type, "[?]")
-            
-            with st.expander(f"{op_icon} Operation {i}: {op_type}"):
-                if op_type == "ADD":
-                    st.markdown(f"**Section:** {op.get('section')}")
-                    st.markdown(f"**Content:** {op.get('content')}")
-                elif op_type == "REMOVE":
-                    st.markdown(f"**Bullet ID:** {op.get('bullet_id')}")
-                    st.markdown(f"**Reason:** {op.get('reason')}")
-                elif op_type == "MODIFY":
-                    st.markdown(f"**Bullet ID:** {op.get('bullet_id')}")
-                    st.markdown(f"**New Content:** {op.get('new_content')}")
-                    st.markdown(f"**Reason:** {op.get('reason')}")
-                elif op_type == "MERGE":
-                    st.markdown(f"**Source Bullets:** {op.get('source_bullet_ids')}")
-                    st.markdown(f"**Target Section:** {op.get('target_section')}")
-                    st.markdown(f"**Merged Content:** {op.get('merged_content')}")
-                    st.markdown(f"**Reason:** {op.get('reason')}")
-    else:
-        st.info("No new operations needed - playbook already contains relevant knowledge.")
-    
-    # Added Bullets
-    if added_bullets:
-        st.markdown("### Added Bullets")
-        for bullet in added_bullets:
-            st.success(f"**{bullet.get('id')}**: {bullet.get('content')[:100]}...")
-
-
-def render_playbook_view():
-    """Render the playbook viewer."""
-    st.subheader("Current Playbook")
-    
-    if not st.session_state.pipeline:
-        st.warning("Initialize the pipeline to view the playbook.")
-        return
-    
-    playbook = st.session_state.pipeline.get_playbook()
-    stats = playbook.get_stats()
-    
-    # Stats overview
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Total Bullets", stats.get("total_bullets", 0))
-    col2.metric("Strategies", stats.get("sections", {}).get("strategies", 0))
-    col3.metric("Pitfalls", stats.get("sections", {}).get("pitfalls", 0))
-    col4.metric("Templates", stats.get("sections", {}).get("templates", 0))
-    col5.metric("Archived", stats.get("archived_count", 0))
-    
-    # Section views
-    sections = ["strategies", "pitfalls", "templates", "definitions", "code_snippets"]
-    
-    for section in sections:
-        bullets = playbook.get_section(section)
-        if bullets:
-            with st.expander(f"{section.upper()} ({len(bullets)} items)", expanded=False):
-                for bullet in bullets:
-                    effectiveness = bullet.effectiveness_score
-                    eff_indicator = "[+]" if effectiveness > 0.5 else "[~]" if effectiveness >= 0 else "[-]"
-                    
-                    st.markdown(f"""
-                    **{bullet.id}** {eff_indicator}
-                    
-                    {bullet.content}
-                    
-                    *Helpful: {bullet.helpful_count} | Harmful: {bullet.harmful_count} | Neutral: {bullet.neutral_count}*
-                    
-                    ---
-                    """)
-    
-    # Archived bullets
-    if playbook.archived_bullets:
-        with st.expander(f"ARCHIVED ({len(playbook.archived_bullets)} items)", expanded=False):
-            for bullet in playbook.archived_bullets:
-                st.markdown(f"""
-                **{bullet.id}** (archived)
-                
-                {bullet.content}
-                
-                *Reason: {bullet.archive_reason}*
-                
-                ---
-                """)
-    
-    # Playbook actions
-    st.divider()
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("Deduplicate Playbook"):
-            removed = deduplicate_playbook(playbook)
-            if removed:
-                st.session_state.pipeline.playbook_manager.save()
-                st.success(f"Removed {len(removed)} duplicate bullets.")
-            else:
-                st.info("No duplicates found.")
-    
-    with col2:
-        if st.button("Auto-Cleanup Harmful"):
-            removed = st.session_state.pipeline.auto_cleanup()
-            if removed:
-                st.success(f"Removed {len(removed)} harmful bullets.")
-            else:
-                st.info("No harmful bullets to remove.")
-    
-    with col3:
-        if st.button("Export Playbook"):
-            playbook_json = json.dumps(playbook.to_dict(), indent=2)
-            st.download_button(
-                "Download JSON",
-                playbook_json,
-                file_name="playbook_export.json",
-                mime="application/json"
-            )
-
-
-def render_history():
-    """Render the question history."""
-    st.subheader("History")
-    
-    if not st.session_state.history:
-        st.info("No questions asked yet.")
-        return
-    
-    for i, item in enumerate(reversed(st.session_state.history[-10:]), 1):
-        with st.expander(f"{i}. {item['question'][:50]}...", expanded=False):
-            st.markdown(f"**Question:** {item['question']}")
-            st.markdown(f"**Answer:** {item['answer'][:200]}...")
-            st.markdown(f"**Format:** {item.get('output_format', 'text')}")
-            st.markdown(f"*{item['timestamp']}*")
-
-
-# =============================================================================
-# MAIN EXECUTION LOGIC
-# =============================================================================
-
-def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline: bool):
+def run_pipeline(inputs: dict, full_pipeline: bool):
     """Execute the ACE pipeline."""
     if not st.session_state.pipeline:
         st.error("Please initialize the pipeline first!")
         return
     
-    if not question.strip():
-        st.warning("Please enter a question.")
+    if not inputs["question"].strip():
+        st.warning("Please enter a question or clause.")
         return
     
-    # Get output format from session state
     output_format = st.session_state.output_format
     
-    # Check if streaming is enabled (both in ACEConfig and LLMConfig)
     enable_streaming = (
         st.session_state.config 
         and st.session_state.config.enable_streaming 
@@ -524,8 +380,8 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
     
     try:
         if full_pipeline:
+            # Full pipeline with Reflector and Curator
             if enable_streaming:
-                # Create streaming callbacks for each agent
                 generator_placeholder = st.empty()
                 reflector_placeholder = st.empty()
                 curator_placeholder = st.empty()
@@ -556,40 +412,49 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
                 }
                 
                 result = st.session_state.pipeline.run(
-                    question=question,
-                    ground_truth=ground_truth if ground_truth else None,
-                    feedback=feedback if feedback else None,
+                    question=inputs["question"],
+                    ground_truth=inputs["ground_truth"] if inputs["ground_truth"] else None,
+                    feedback=inputs["feedback"] if inputs["feedback"] else None,
                     stream_callbacks=stream_callbacks,
-                    output_format=output_format
+                    output_format=output_format,
+                    mode=inputs["mode"],
+                    reference_clause=inputs["reference_clause"],
+                    constraints=inputs["constraints"],
+                    issues=inputs["issues"],
+                    user_prompt=inputs["user_prompt"],
+                    additional_instructions=inputs["additional_instructions"]
                 )
                 
-                # Clear streaming placeholders after completion
                 generator_placeholder.empty()
                 reflector_placeholder.empty()
                 curator_placeholder.empty()
             else:
-                # Non-streaming mode
-                with st.spinner("Processing..."):
+                with st.spinner("⏳ Processing..."):
                     result = st.session_state.pipeline.run(
-                        question=question,
-                        ground_truth=ground_truth if ground_truth else None,
-                        feedback=feedback if feedback else None,
-                        output_format=output_format
+                        question=inputs["question"],
+                        ground_truth=inputs["ground_truth"] if inputs["ground_truth"] else None,
+                        feedback=inputs["feedback"] if inputs["feedback"] else None,
+                        output_format=output_format,
+                        mode=inputs["mode"],
+                        reference_clause=inputs["reference_clause"],
+                        constraints=inputs["constraints"],
+                        issues=inputs["issues"],
+                        user_prompt=inputs["user_prompt"],
+                        additional_instructions=inputs["additional_instructions"]
                     )
-                
-            # Store results (same for both streaming and non-streaming)
+            
             st.session_state.current_result = {
                 "generator_output": result.generator_output.to_dict(),
                 "reflector_output": result.reflector_output.to_dict(),
                 "curator_output": result.curator_output.to_dict(),
                 "added_bullets": [b.to_dict() for b in result.added_bullets],
-                "playbook_stats": result.playbook_stats
+                "playbook_stats": result.playbook_stats,
+                "mode": inputs["mode"]
             }
             
-            # Add to history
             st.session_state.history.append({
-                "question": question,
-                "answer": result.generator_output.final_answer,
+                "question": f"[{inputs['mode'].upper()}] {inputs['question'][:50]}...",
+                "answer": result.generator_output.final_answer[:100] + "...",
                 "output_format": output_format,
                 "timestamp": result.timestamp
             })
@@ -597,7 +462,6 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
         else:
             # Generate only
             if enable_streaming:
-                # Streaming for generate_only
                 generator_placeholder = st.empty()
                 generator_text = ""
                 
@@ -607,30 +471,42 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
                     generator_placeholder.markdown(f"**Generator:**\n\n{generator_text}")
                 
                 output = st.session_state.pipeline.generate_only(
-                    question,
+                    inputs["question"],
                     stream_callback=generator_callback,
-                    output_format=output_format
+                    output_format=output_format,
+                    mode=inputs["mode"],
+                    reference_clause=inputs["reference_clause"],
+                    constraints=inputs["constraints"],
+                    issues=inputs["issues"],
+                    user_prompt=inputs["user_prompt"],
+                    additional_instructions=inputs["additional_instructions"]
                 )
                 
                 generator_placeholder.empty()
             else:
-                # Non-streaming mode
-                with st.spinner("Generating..."):
+                with st.spinner("⏳ Generating..."):
                     output = st.session_state.pipeline.generate_only(
-                        question,
-                        output_format=output_format
+                        inputs["question"],
+                        output_format=output_format,
+                        mode=inputs["mode"],
+                        reference_clause=inputs["reference_clause"],
+                        constraints=inputs["constraints"],
+                        issues=inputs["issues"],
+                        user_prompt=inputs["user_prompt"],
+                        additional_instructions=inputs["additional_instructions"]
                     )
             
             st.session_state.current_result = {
                 "generator_output": output.to_dict(),
                 "reflector_output": None,
                 "curator_output": None,
-                "added_bullets": []
+                "added_bullets": [],
+                "mode": inputs["mode"]
             }
             
             st.session_state.history.append({
-                "question": question,
-                "answer": output.final_answer,
+                "question": f"[{inputs['mode'].upper()}] {inputs['question'][:50]}...",
+                "answer": output.final_answer[:100] + "...",
                 "output_format": output_format,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             })
@@ -640,12 +516,432 @@ def run_pipeline(question: str, ground_truth: str, feedback: str, full_pipeline:
     except Exception as e:
         st.error(f"Error: {str(e)}")
         import traceback
-        st.code(traceback.format_exc())
+        with st.expander("View Traceback"):
+            st.code(traceback.format_exc())
 
 
-# =============================================================================
-# MAIN APP
-# =============================================================================
+def render_results():
+    """Render results section."""
+    if st.session_state.current_result is None:
+        st.info("Submit a question or clause to see results here.")
+        return
+    
+    result = st.session_state.current_result
+    mode = result.get("mode", "answer")
+    
+    # Mode badge
+    st.caption(f"**Mode: {mode.upper()}**")
+    
+    # Tabs
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Generator",
+        "Reflector",
+        "Curator",
+        "Playbook"
+    ])
+    
+    with tab1:
+        render_generator_output(result.get("generator_output"))
+    
+    with tab2:
+        render_reflector_output(result.get("reflector_output"))
+    
+    with tab3:
+        render_curator_output(result.get("curator_output"), result.get("added_bullets", []))
+    
+    with tab4:
+        render_playbook_view()
+
+
+def render_generator_output(output: Optional[dict]):
+    """Render Generator output."""
+    st.subheader("Generator Output")
+    
+    if not output:
+        st.warning("No output available.")
+        return
+    
+    # Check if this is a reformulation output
+    reformulation_result = output.get("reformulation_result")
+    
+    if reformulation_result:
+        # Reformulation mode - show structured alternatives
+        if reformulation_result.get("success"):
+            alternatives = reformulation_result.get("alternatives", [])
+            st.success(f"Generated {len(alternatives)} alternative(s)")
+            
+            for alt in alternatives:
+                rank = alt.get("rank", "?")
+                confidence = alt.get("confidence", 0)
+                content = alt.get("content", "")
+                changes = alt.get("changes_summary", "")
+                
+                # Confidence indicator
+                if confidence >= 0.8:
+                    conf_indicator = "[HIGH]"
+                elif confidence >= 0.6:
+                    conf_indicator = "[MED]"
+                else:
+                    conf_indicator = "[LOW]"
+                
+                with st.expander(f"Alternative {rank} {conf_indicator} (Confidence: {confidence:.0%})", expanded=(rank == 1)):
+                    # Content display
+                    if isinstance(content, dict):
+                        # ProseMirror format
+                        st.markdown("**Clause:**")
+                        
+                        # Check if structured format with sub_clauses
+                        if "main_clause" in content and "sub_clauses" in content:
+                            # Structured format - render nicely
+                            main_text = _extract_from_prosemirror_node(content["main_clause"])
+                            st.markdown(main_text)
+                            
+                            # Render sub-clauses
+                            for i, sub_clause in enumerate(content.get("sub_clauses", []), 1):
+                                sub_text = _extract_from_prosemirror_node(sub_clause)
+                                st.markdown(f"  {sub_text}")
+                            
+                            extracted_text = _extract_text_from_prosemirror(content)
+                        else:
+                            # Simple ProseMirror document
+                            extracted_text = _extract_text_from_prosemirror(content)
+                            st.markdown(extracted_text)
+                        
+                        with st.expander("ProseMirror JSON"):
+                            st.json(content)
+                            st.download_button(
+                                "Download JSON",
+                                json.dumps(content, indent=2),
+                                file_name=f"reformulated_alt{rank}.json",
+                                mime="application/json",
+                                key=f"download_alt_{rank}"
+                            )
+                    else:
+                        # Plain text
+                        st.markdown("**Clause:**")
+                        st.markdown(content)
+                        extracted_text = content
+                    
+                    # Changes summary
+                    if changes:
+                        st.markdown(f"**Changes:** {changes}")
+                    
+                    # Copy text area
+                    st.text_area(
+                        "Copy text:",
+                        value=content if isinstance(content, str) else extracted_text,
+                        height=80,
+                        key=f"copy_alt_{rank}",
+                        label_visibility="collapsed"
+                    )
+        else:
+            st.error(f"Reformulation failed: {reformulation_result.get('failure_reason', 'Unknown error')}")
+        
+        # Reasoning
+        with st.expander("Reasoning", expanded=False):
+            st.markdown(output.get("reasoning", "No reasoning provided."))
+    
+    else:
+        # Standard Q&A mode
+        st.markdown("### Final Answer")
+        st.markdown(output.get("final_answer", "No answer generated."))
+        
+        # ProseMirror JSON (if available)
+        prosemirror_output = output.get("final_answer_prosemirror")
+        if prosemirror_output:
+            with st.expander("ProseMirror JSON", expanded=False):
+                st.json(prosemirror_output)
+                st.download_button(
+                    "Download JSON",
+                    json.dumps(prosemirror_output, indent=2),
+                    file_name="answer_prosemirror.json",
+                    mime="application/json"
+                )
+        
+        # Reasoning
+        with st.expander("Reasoning", expanded=True):
+            st.markdown(output.get("reasoning", "No reasoning provided."))
+        
+        # Bullet IDs
+        bullet_ids = output.get("bullet_ids", [])
+        if bullet_ids:
+            st.markdown("### Playbook Bullets Used")
+            for bid in bullet_ids:
+                st.code(bid, language=None)
+        else:
+            st.info("No playbook bullets were referenced.")
+
+
+def _extract_text_from_prosemirror(doc: dict) -> str:
+    """Extract plain text from ProseMirror document."""
+    if not doc or not isinstance(doc, dict):
+        return ""
+    
+    # Check if this is structured content with main_clause and sub_clauses
+    if "main_clause" in doc and "sub_clauses" in doc:
+        texts = []
+        
+        # Extract from main clause (no body_doc wrapper)
+        main_text = _extract_from_prosemirror_node(doc["main_clause"])
+        if main_text:
+            texts.append(main_text)
+        
+        # Extract from sub_clauses (no body_doc wrapper)
+        for sub_clause in doc.get("sub_clauses", []):
+            sub_text = _extract_from_prosemirror_node(sub_clause)
+            if sub_text:
+                texts.append(sub_text)
+        
+        return "\n".join(texts)
+    else:
+        # Simple ProseMirror document
+        return _extract_from_prosemirror_node(doc)
+
+
+def _extract_from_prosemirror_node(node: dict) -> str:
+    """Extract text from a ProseMirror node (recursive helper)."""
+    if not node or not isinstance(node, dict):
+        return ""
+    
+    texts = []
+    
+    def extract(n):
+        if isinstance(n, dict):
+            if n.get("type") == "text":
+                texts.append(n.get("text", ""))
+            elif n.get("type") == "slot":
+                # Skip slot placeholders
+                pass
+            elif "content" in n:
+                for child in n["content"]:
+                    extract(child)
+        elif isinstance(n, list):
+            for item in n:
+                extract(item)
+    
+    extract(node)
+    return " ".join(texts)
+
+
+def render_reflector_output(output: Optional[dict]):
+    """Render Reflector output."""
+    st.subheader("Reflector Analysis")
+    
+    if not output:
+        st.warning("No reflector output available.")
+        return
+    
+    # Key Insight
+    st.markdown("### Key Insight")
+    st.info(output.get("key_insight", "No key insight extracted."))
+    
+    # Extracted Strategies (from ground truth comparison)
+    extracted_strategies = output.get("extracted_strategies", [])
+    if extracted_strategies:
+        st.markdown("### Extracted Strategies")
+        st.success("Strategies learned from ground truth comparison:")
+        for i, strategy in enumerate(extracted_strategies, 1):
+            st.markdown(f"{i}. {strategy}")
+    
+    # Extracted Pitfalls (from ground truth comparison)
+    extracted_pitfalls = output.get("extracted_pitfalls", [])
+    if extracted_pitfalls:
+        st.markdown("### Extracted Pitfalls")
+        st.warning("Pitfalls identified from ground truth comparison:")
+        for i, pitfall in enumerate(extracted_pitfalls, 1):
+            st.markdown(f"{i}. {pitfall}")
+    
+    # Error Identification
+    with st.expander("Error Identification", expanded=True):
+        st.markdown(output.get("error_identification", "No errors identified."))
+    
+    # Root Cause Analysis
+    with st.expander("Root Cause Analysis"):
+        st.markdown(output.get("root_cause_analysis", "No root cause analysis provided."))
+    
+    # Correct Approach
+    with st.expander("Correct Approach"):
+        st.markdown(output.get("correct_approach", "No correct approach suggested."))
+    
+    # Full Reasoning
+    with st.expander("Full Reasoning"):
+        st.markdown(output.get("reasoning", "No reasoning provided."))
+    
+    # Bullet Tags
+    bullet_tags = output.get("bullet_tags", [])
+    if bullet_tags:
+        st.markdown("### Bullet Tags")
+        for tag in bullet_tags:
+            tag_indicators = {
+                "helpful": "[+]",
+                "harmful": "[-]",
+                "neutral": "[~]"
+            }
+            indicator = tag_indicators.get(tag.get("tag"), "[~]")
+            st.markdown(f"{indicator} `{tag.get('id')}`: **{tag.get('tag')}**")
+
+
+def render_curator_output(output: Optional[dict], added_bullets: list):
+    """Render Curator output."""
+    st.subheader("Curator Updates")
+    
+    if not output:
+        st.warning("No curator output available.")
+        return
+    
+    # Reasoning
+    with st.expander("Curator's Reasoning", expanded=True):
+        st.markdown(output.get("reasoning", "No reasoning provided."))
+    
+    # Operations
+    operations = output.get("operations", [])
+    
+    if operations:
+        st.markdown("### Planned Operations")
+        for i, op in enumerate(operations, 1):
+            op_type = op.get('type', 'UNKNOWN')
+            op_labels = {
+                "ADD": "[+]",
+                "REMOVE": "[-]",
+                "MODIFY": "[*]",
+                "MERGE": "[M]"
+            }
+            label = op_labels.get(op_type, "[?]")
+            
+            with st.expander(f"{label} Operation {i}: **{op_type}**"):
+                if op_type == "ADD":
+                    st.markdown(f"**Section:** {op.get('section')}")
+                    st.markdown(f"**Content:** {op.get('content')}")
+                elif op_type == "REMOVE":
+                    st.markdown(f"**Bullet ID:** `{op.get('bullet_id')}`")
+                    st.markdown(f"**Reason:** {op.get('reason')}")
+                elif op_type == "MODIFY":
+                    st.markdown(f"**Bullet ID:** `{op.get('bullet_id')}`")
+                    st.markdown(f"**New Content:** {op.get('new_content')}")
+                    st.markdown(f"**Reason:** {op.get('reason')}")
+                elif op_type == "MERGE":
+                    st.markdown(f"**Source Bullets:** {op.get('source_bullet_ids')}")
+                    st.markdown(f"**Target Section:** {op.get('target_section')}")
+                    st.markdown(f"**Merged Content:** {op.get('merged_content')}")
+                    st.markdown(f"**Reason:** {op.get('reason')}")
+    else:
+        st.info("No new operations needed - playbook already contains relevant knowledge.")
+    
+    # Added Bullets
+    if added_bullets:
+        st.markdown("### Added Bullets")
+        for bullet in added_bullets:
+            st.success(f"**{bullet.get('id')}**: {bullet.get('content')[:100]}...")
+
+
+def render_playbook_view():
+    """Render playbook viewer."""
+    st.subheader("Current Playbook")
+    
+    if not st.session_state.pipeline:
+        st.warning("Initialize the pipeline to view the playbook.")
+        return
+    
+    playbook = st.session_state.pipeline.get_playbook()
+    stats = playbook.get_stats()
+    
+    # Stats
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total", stats.get("total_bullets", 0))
+    col2.metric("Strategies", stats.get("sections", {}).get("strategies", 0))
+    col3.metric("Pitfalls", stats.get("sections", {}).get("pitfalls", 0))
+    col4.metric("Templates", stats.get("sections", {}).get("templates", 0))
+    col5.metric("Archived", stats.get("archived_count", 0))
+    
+    # Sections
+    sections = ["strategies", "pitfalls", "templates", "definitions", "code_snippets"]
+    
+    for section in sections:
+        bullets = playbook.get_section(section)
+        if bullets:
+            
+            with st.expander(f"**{section.upper()}** ({len(bullets)} items)", expanded=False):
+                for bullet in bullets:
+                    effectiveness = bullet.effectiveness_score
+                    if effectiveness > 0.5:
+                        eff_indicator = "[+]"
+                    elif effectiveness >= 0:
+                        eff_indicator = "[~]"
+                    else:
+                        eff_indicator = "[-]"
+                    
+                    st.markdown(f"""
+                    **{bullet.id}** {eff_indicator}
+                    
+                    {bullet.content}
+                    
+                    *Helpful: {bullet.helpful_count} | Harmful: {bullet.harmful_count} | Neutral: {bullet.neutral_count}*
+                    
+                    ---
+                    """)
+    
+    # Archived bullets
+    if playbook.archived_bullets:
+        with st.expander(f"**ARCHIVED** ({len(playbook.archived_bullets)} items)", expanded=False):
+            for bullet in playbook.archived_bullets:
+                st.markdown(f"""
+                **{bullet.id}** *(archived)*
+                
+                {bullet.content}
+                
+                *Reason: {bullet.archive_reason}*
+                
+                ---
+                """)
+    
+    # Actions
+    st.divider()
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("Deduplicate", use_container_width=True):
+            removed = deduplicate_playbook(playbook)
+            if removed:
+                st.session_state.pipeline.playbook_manager.save()
+                st.success(f"Removed {len(removed)} duplicates")
+            else:
+                st.info("No duplicates found")
+    
+    with col2:
+        if st.button("Auto-Cleanup", use_container_width=True):
+            removed = st.session_state.pipeline.auto_cleanup()
+            if removed:
+                st.success(f"Removed {len(removed)} harmful bullets")
+            else:
+                st.info("No harmful bullets to remove")
+    
+    with col3:
+        if st.button("Export", use_container_width=True):
+            playbook_json = json.dumps(playbook.to_dict(), indent=2)
+            st.download_button(
+                "Download JSON",
+                playbook_json,
+                file_name="playbook_export.json",
+                mime="application/json",
+                use_container_width=True
+            )
+
+
+def render_history():
+    """Render history."""
+    st.subheader("📜 History")
+    
+    if not st.session_state.history:
+        st.info("No questions asked yet.")
+        return
+    
+    for i, item in enumerate(reversed(st.session_state.history[-10:]), 1):
+        with st.expander(f"{i}. {item['question'][:50]}...", expanded=False):
+            st.markdown(f"**Question:** {item['question']}")
+            st.markdown(f"**Answer:** {item['answer'][:200]}...")
+            st.markdown(f"**Format:** {item.get('output_format', 'text')}")
+            st.markdown(f"*{item['timestamp']}*")
+
 
 def main():
     """Main application entry point."""
@@ -653,13 +949,14 @@ def main():
     render_header()
     
     st.divider()
+    
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        question, ground_truth, feedback, run_full, generate_only = render_question_input()
+        inputs = render_input()
         
-        if run_full or generate_only:
-            run_pipeline(question, ground_truth, feedback, run_full)
+        if inputs["run_full"] or inputs["generate_only"]:
+            run_pipeline(inputs, inputs["run_full"])
         
         st.divider()
         render_results()

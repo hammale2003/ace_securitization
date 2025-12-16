@@ -162,12 +162,27 @@ Inputs:
 - The current playbook with bullet IDs and contents.
 
 Tasks:
-1. Carefully analyze the Generator's reasoning and final answer. Compare with ground truth if provided. Note any conceptual errors, misapplied legal definitions, missing steps, or formatting mistakes.
-2. Identify the root cause of each error (e.g. wrong source of truth, misinterpreted term, failure to apply a relevant bullet).
-3. Suggest a correct approach the Generator should take next time.
-4. Summarize the key insight(s) as actionable lessons to improve future generations.
-5. Tag each bullet ID used by the Generator as `helpful`, `harmful`, or `neutral`.
-6. If a bullet is consistently harmful or misleading, recommend it for removal or modification.
+1. **CRITICAL - Ground Truth Comparison**: If ground truth is provided, this is your PRIMARY reference point. Carefully compare the Generator's response with the ground truth. Note EVERY difference, even subtle ones. Pay special attention to:
+   - Missing key points that are in the ground truth
+   - Incorrect statements that contradict the ground truth
+   - Different phrasing that changes legal meaning
+   - Incomplete coverage of concepts in the ground truth
+
+2. **Extract Strategies and Pitfalls**: From the comparison between Generator output and ground truth, you MUST extract:
+   - **STRATEGIES**: What did the ground truth do RIGHT that the Generator missed? What approach, structure, or content made the ground truth correct? These become reusable best practices.
+   - **PITFALLS**: What did the Generator do WRONG? What mistakes, omissions, or misconceptions led to the incorrect answer? These become warnings for future responses.
+
+3. Identify the root cause of each error (e.g. wrong source of truth, misinterpreted term, failure to apply a relevant bullet, missing playbook knowledge).
+
+4. Suggest a correct approach the Generator should take next time, incorporating lessons from the ground truth.
+
+5. Summarize the key insight(s) as actionable lessons to improve future generations.
+
+6. Tag each bullet ID used by the Generator as `helpful`, `harmful`, or `neutral`.
+
+7. If a bullet is consistently harmful or misleading, recommend it for removal or modification.
+
+8. **IMPORTANT - Ground Truth Definitions**: If the user's question asks to define a term and ground truth is provided with the correct definition, you MUST flag this as a definition that needs to be added to the playbook. Extract the term being defined and the definition text from the ground truth.
 
 Key securitization concepts to check for:
 - Correct characterization of true sale requirements
@@ -180,11 +195,19 @@ Key securitization concepts to check for:
 
 Return your response as a JSON object:
 {
-  "reasoning": "… detailed analysis …",
-  "error_identification": "… what went wrong …",
+  "reasoning": "… detailed analysis comparing Generator output with ground truth if provided …",
+  "error_identification": "… what went wrong, with specific references to ground truth …",
   "root_cause_analysis": "… why it went wrong …",
-  "correct_approach": "… what should be done instead …",
+  "correct_approach": "… what should be done instead, based on ground truth …",
   "key_insight": "… principle to remember …",
+  "extracted_strategies": [
+    "Strategy 1: What the ground truth did right that should be replicated",
+    "Strategy 2: Another best practice from the ground truth"
+  ],
+  "extracted_pitfalls": [
+    "Pitfall 1: What the Generator did wrong that should be avoided",
+    "Pitfall 2: Another mistake or omission to watch out for"
+  ],
   "bullet_tags": [
     {"id": "str-00001", "tag": "helpful"},
     {"id": "pit-00002", "tag": "harmful"}
@@ -192,8 +215,20 @@ Return your response as a JSON object:
   "removal_candidates": ["str-00003"],
   "modification_suggestions": [
     {"id": "str-00002", "suggestion": "Should clarify that..."}
-  ]
+  ],
+  "ground_truth_definition": {
+    "term": "Term Name",
+    "definition": "The provided ground truth definition text",
+    "should_add_to_playbook": true
+  }
 }
+
+IMPORTANT NOTES:
+- `extracted_strategies` and `extracted_pitfalls` are REQUIRED when ground truth is provided. Extract concrete, actionable insights.
+- Strategies should be specific enough to guide future responses (e.g., "Always mention the five elements of true sale: legal isolation, substantive consolidation risk, characterization risk, non-petition covenants, and opinion qualifications")
+- Pitfalls should be specific warnings (e.g., "Avoid defining bankruptcy remoteness without mentioning SPV structural requirements")
+- Include `ground_truth_definition` ONLY when the question asks to define a term AND ground truth is provided
+- If ground truth is provided, your analysis MUST be centered on comparing it with the Generator's output
 
 Your output must be valid JSON. Do not include any text before or after the JSON object."""
 
@@ -215,12 +250,20 @@ def format_reflector_user_message(
     ]
     
     if ground_truth:
-        parts.append(f"\nGROUND TRUTH / EXPECTED ANSWER:\n{ground_truth}")
+        parts.append(f"\n{'='*80}")
+        parts.append(f"GROUND TRUTH / EXPECTED ANSWER (PRIMARY REFERENCE):")
+        parts.append(f"{'='*80}")
+        parts.append(ground_truth)
+        parts.append(f"{'='*80}")
+        parts.append("\n*** CRITICAL: Compare the Generator output above with this ground truth. Extract strategies and pitfalls. ***")
     
     if feedback:
         parts.append(f"\nHUMAN FEEDBACK:\n{feedback}")
     
-    parts.append("\nPlease analyze the Generator's output and provide your reflection as a JSON object.")
+    if ground_truth:
+        parts.append("\nPlease analyze the Generator's output by comparing it thoroughly with the ground truth. Extract specific strategies and pitfalls. Provide your reflection as a JSON object.")
+    else:
+        parts.append("\nPlease analyze the Generator's output and provide your reflection as a JSON object.")
     
     return "\n".join(parts)
 
@@ -233,15 +276,26 @@ CURATOR_SYSTEM_PROMPT = """You are the "ACE Curator", responsible for maintainin
 
 Inputs:
 - The current playbook (with section names and bullet IDs).
-- The Reflector's JSON object (including `key_insight`, `bullet_tags`, `removal_candidates`, `modification_suggestions`).
+- The Reflector's JSON object (including `key_insight`, `bullet_tags`, `removal_candidates`, `modification_suggestions`, `extracted_strategies`, `extracted_pitfalls`, and optionally `ground_truth_definition`).
 - The original user question and Generator's attempted answer.
 
 Tasks:
 1. Review the playbook and the Reflector's insights. Identify any new strategies, rules, templates or pitfalls that are missing from the current playbook.
-2. Avoid redundancy. If a similar bullet exists, do NOT add duplicates. Instead, consider MODIFY to improve the existing bullet.
-3. If bullets are consistently harmful (tagged harmful multiple times), propose REMOVE operations.
-4. If two or more bullets cover the same concept redundantly, propose MERGE operations.
-5. Structure new content under the appropriate section:
+
+2. **CRITICAL - Extracted Strategies and Pitfalls**: If the Reflector provides `extracted_strategies` or `extracted_pitfalls` (from ground truth comparison):
+   - For each item in `extracted_strategies`: Create an ADD operation to the `strategies` section (unless a similar strategy already exists)
+   - For each item in `extracted_pitfalls`: Create an ADD operation to the `pitfalls` section (unless a similar pitfall already exists)
+   - These are HIGH PRIORITY additions because they come from verified ground truth
+
+3. **CRITICAL - Ground Truth Definitions**: If the Reflector provides a `ground_truth_definition` with `should_add_to_playbook: true`, you MUST create an ADD operation to add this definition to the `definitions` section. Format the definition content as: "[TERM]: [DEFINITION TEXT]"
+
+4. Avoid redundancy. If a similar bullet exists, do NOT add duplicates. Instead, consider MODIFY to improve the existing bullet.
+
+5. If bullets are consistently harmful (tagged harmful multiple times), propose REMOVE operations.
+
+6. If two or more bullets cover the same concept redundantly, propose MERGE operations.
+
+7. Structure new content under the appropriate section:
    - `strategies`: General approaches, best practices, methodologies
    - `pitfalls`: Common mistakes, things to avoid, red flags
    - `templates`: Reusable clause structures, boilerplate language patterns

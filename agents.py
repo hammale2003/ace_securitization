@@ -27,6 +27,11 @@ from prompts import (
     get_empty_reflector_response,
     get_empty_curator_response
 )
+from prompts_reformulation_agent import (
+    get_reformulation_prompt,
+    format_reformulation_user_message,
+    parse_reformulation_response
+)
 
 
 @dataclass
@@ -36,6 +41,7 @@ class GeneratorOutput:
     bullet_ids: List[str]
     final_answer: str
     final_answer_prosemirror: Optional[Dict[str, Any]] = None  # ProseMirror JSON format
+    reformulation_result: Optional[Dict[str, Any]] = None  # For reformulation modes: {success, alternatives, failure_reason}
     raw_response: Optional[LLMResponse] = None
     
     def to_dict(self) -> Dict[str, Any]:
@@ -46,6 +52,8 @@ class GeneratorOutput:
         }
         if self.final_answer_prosemirror:
             result["final_answer_prosemirror"] = self.final_answer_prosemirror
+        if self.reformulation_result:
+            result["reformulation_result"] = self.reformulation_result
         return result
     
     @classmethod
@@ -54,7 +62,8 @@ class GeneratorOutput:
             reasoning=data.get("reasoning", ""),
             bullet_ids=data.get("bullet_ids", []),
             final_answer=data.get("final_answer", ""),
-            final_answer_prosemirror=data.get("final_answer_prosemirror")
+            final_answer_prosemirror=data.get("final_answer_prosemirror"),
+            reformulation_result=data.get("reformulation_result")
         )
     
     @classmethod
@@ -122,10 +131,13 @@ class ReflectorOutput:
     bullet_tags: List[Dict[str, str]]
     removal_candidates: List[str] = field(default_factory=list)
     modification_suggestions: List[Dict[str, str]] = field(default_factory=list)
+    extracted_strategies: List[str] = field(default_factory=list)  # Strategies from ground truth comparison
+    extracted_pitfalls: List[str] = field(default_factory=list)     # Pitfalls from ground truth comparison
+    ground_truth_definition: Optional[Dict[str, Any]] = None
     raw_response: Optional[LLMResponse] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "reasoning": self.reasoning,
             "error_identification": self.error_identification,
             "root_cause_analysis": self.root_cause_analysis,
@@ -133,8 +145,13 @@ class ReflectorOutput:
             "key_insight": self.key_insight,
             "bullet_tags": self.bullet_tags,
             "removal_candidates": self.removal_candidates,
-            "modification_suggestions": self.modification_suggestions
+            "modification_suggestions": self.modification_suggestions,
+            "extracted_strategies": self.extracted_strategies,
+            "extracted_pitfalls": self.extracted_pitfalls
         }
+        if self.ground_truth_definition:
+            result["ground_truth_definition"] = self.ground_truth_definition
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ReflectorOutput":
@@ -146,7 +163,10 @@ class ReflectorOutput:
             key_insight=data.get("key_insight", ""),
             bullet_tags=data.get("bullet_tags", []),
             removal_candidates=data.get("removal_candidates", []),
-            modification_suggestions=data.get("modification_suggestions", [])
+            modification_suggestions=data.get("modification_suggestions", []),
+            extracted_strategies=data.get("extracted_strategies", []),
+            extracted_pitfalls=data.get("extracted_pitfalls", []),
+            ground_truth_definition=data.get("ground_truth_definition")
         )
     
     @classmethod
@@ -162,6 +182,9 @@ class ReflectorOutput:
                 bullet_tags=parsed.get("bullet_tags", []),
                 removal_candidates=parsed.get("removal_candidates", []),
                 modification_suggestions=parsed.get("modification_suggestions", []),
+                extracted_strategies=parsed.get("extracted_strategies", []),
+                extracted_pitfalls=parsed.get("extracted_pitfalls", []),
+                ground_truth_definition=parsed.get("ground_truth_definition"),
                 raw_response=response
             )
         return cls(
@@ -173,6 +196,9 @@ class ReflectorOutput:
             bullet_tags=[],
             removal_candidates=[],
             modification_suggestions=[],
+            extracted_strategies=[],
+            extracted_pitfalls=[],
+            ground_truth_definition=None,
             raw_response=response
         )
 
@@ -231,21 +257,70 @@ class Generator:
         playbook: Playbook,
         stream_callback: Optional[Callable[[str], None]] = None,
         use_retrieval: bool = True,
-        output_format: str = "text"  # "text" or "prosemirror"
+        output_format: str = "text",  # "text" or "prosemirror"
+        mode: str = "answer",  # "answer", "enrich", "derive", "remediate", "explore"
+        # Reformulation-specific parameters
+        reference_clause: str = "",
+        constraints: str = "",
+        issues: str = "",
+        user_prompt: str = "",
+        additional_instructions: str = ""
     ) -> GeneratorOutput:
         """
-        Generate an answer for the given question using the playbook.
+        Generate an answer or reformulation using the playbook.
         
         Args:
-            question: The user's question
+            question: The user's question or clause to reformulate
             playbook: The current playbook with accumulated knowledge
             stream_callback: Optional callback for streaming tokens
             use_retrieval: If True and retriever is set, use semantic retrieval
             output_format: "text" for plain text, "prosemirror" for ProseMirror JSON
+            mode: "answer" for Q&A, or reformulation modes: "enrich", "derive", "remediate", "explore"
+            reference_clause: Canon clause for reformulation modes
+            constraints: Constraints for "derive" mode
+            issues: Issues for "remediate" mode
+            user_prompt: User request for "explore" mode
+            additional_instructions: Extra guidance for reformulation
         
         Returns:
             GeneratorOutput with reasoning, bullet_ids, and final_answer
         """
+        # Check if this is a reformulation request
+        is_reformulation = mode in ["enrich", "derive", "remediate", "explore"]
+        
+        if is_reformulation:
+            # Reformulation mode
+            return self._generate_reformulation(
+                clause=question,
+                playbook=playbook,
+                mode=mode,
+                output_format=output_format,
+                reference_clause=reference_clause,
+                constraints=constraints,
+                issues=issues,
+                user_prompt=user_prompt,
+                additional_instructions=additional_instructions,
+                stream_callback=stream_callback
+            )
+        else:
+            # Standard Q&A mode
+            return self._generate_answer(
+                question=question,
+                playbook=playbook,
+                use_retrieval=use_retrieval,
+                output_format=output_format,
+                stream_callback=stream_callback
+            )
+    
+    def _generate_answer(
+        self,
+        question: str,
+        playbook: Playbook,
+        use_retrieval: bool,
+        output_format: str,
+        stream_callback: Optional[Callable[[str], None]] = None
+    ) -> GeneratorOutput:
+        """Standard Q&A generation (existing functionality)."""
         # Determine whether to use retrieval
         playbook_size = len(playbook.get_all_bullets())
         
@@ -280,6 +355,81 @@ class Generator:
             response, 
             prosemirror_mode=(output_format == "prosemirror")
         )
+    
+    def _generate_reformulation(
+        self,
+        clause: str,
+        playbook: Playbook,
+        mode: str,
+        output_format: str,
+        reference_clause: str,
+        constraints: str,
+        issues: str,
+        user_prompt: str,
+        additional_instructions: str,
+        stream_callback: Optional[Callable[[str], None]] = None
+    ) -> GeneratorOutput:
+        """Reformulation generation (new functionality)."""
+        # Get playbook context
+        playbook_context = playbook.format_for_prompt()
+        
+        # Get appropriate reformulation prompt
+        system_prompt = get_reformulation_prompt(mode, output_format)
+        
+        # Format user message for reformulation
+        user_message = format_reformulation_user_message(
+            mode=mode,
+            clause=clause,
+            reference_clause=reference_clause,
+            playbook_context=playbook_context,
+            additional_instructions=additional_instructions,
+            constraints=constraints,
+            issues=issues,
+            user_prompt=user_prompt
+        )
+        
+        if stream_callback and self.client.config.stream:
+            full_response = ""
+            for chunk in self.client.stream_chat(system_prompt, user_message):
+                full_response += chunk
+                stream_callback(chunk)
+            response = LLMResponse(content=full_response)
+        else:
+            response = self.client.chat(system_prompt, user_message)
+        
+        # Parse reformulation response
+        result = parse_reformulation_response(response.content)
+        
+        # Convert to GeneratorOutput format - keep the full reformulation structure
+        if result["success"] and result["alternatives"]:
+            # Use the top-ranked alternative for backward compatibility (final_answer field)
+            best_alt = result["alternatives"][0]
+            content = best_alt.get("content", "")
+            
+            # Handle both text and ProseMirror formats
+            if isinstance(content, dict):
+                # ProseMirror format
+                final_answer_text = GeneratorOutput._extract_text_from_prosemirror(content)
+            else:
+                # Plain text
+                final_answer_text = content
+            
+            return GeneratorOutput(
+                reasoning=f"Reformulation mode: {mode}. Generated {len(result['alternatives'])} alternative(s).",
+                bullet_ids=[],  # Reformulation doesn't use specific bullets
+                final_answer=final_answer_text,  # Best alternative for backward compatibility
+                reformulation_result=result,  # Full structured result with all alternatives
+                raw_response=response
+            )
+        else:
+            # Reformulation failed
+            return GeneratorOutput(
+                reasoning=f"Reformulation failed: {result.get('failure_reason', 'Unknown error')}",
+                bullet_ids=[],
+                final_answer=f"ERROR: Could not reformulate clause. {result.get('failure_reason', '')}",
+                reformulation_result=result,  # Include failure info
+                raw_response=response
+            )
     
     def generate_stream(
         self,
@@ -548,18 +698,31 @@ class ACEPipeline:
         feedback: Optional[str] = None,
         stream_callbacks: Optional[Dict[str, Callable[[str], None]]] = None,
         use_retrieval: bool = True,
-        output_format: str = "text"  # "text" or "prosemirror"
+        output_format: str = "text",  # "text" or "prosemirror"
+        mode: str = "answer",  # "answer", "enrich", "derive", "remediate", "explore"
+        # Reformulation-specific parameters
+        reference_clause: str = "",
+        constraints: str = "",
+        issues: str = "",
+        user_prompt: str = "",
+        additional_instructions: str = ""
     ) -> ACEPipelineResult:
         """
-        Run the full ACE pipeline for a question.
+        Run the full ACE pipeline for a question or clause reformulation.
         
         Args:
-            question: The user's question
+            question: The user's question or clause to reformulate
             ground_truth: Optional correct answer for training
             feedback: Optional human feedback
             stream_callbacks: Dict with callbacks for each agent
             use_retrieval: Whether to use semantic retrieval
             output_format: "text" for plain text, "prosemirror" for ProseMirror JSON
+            mode: "answer" for Q&A, or reformulation: "enrich", "derive", "remediate", "explore"
+            reference_clause: Canon clause for reformulation modes
+            constraints: Constraints for "derive" mode
+            issues: Issues for "remediate" mode
+            user_prompt: User request for "explore" mode
+            additional_instructions: Extra guidance for reformulation
         """
         callbacks = stream_callbacks or {}
         playbook = self.playbook_manager.get_playbook()
@@ -575,13 +738,19 @@ class ACEPipeline:
                 retrieved = self.retriever.search(question)
                 retrieved_count = len(retrieved)
         
-        # Step 1: Generate answer
+        # Step 1: Generate answer or reformulation
         generator_output = self.generator.generate(
             question=question,
             playbook=playbook,
             stream_callback=callbacks.get("generator"),
             use_retrieval=use_retrieval,
-            output_format=output_format
+            output_format=output_format,
+            mode=mode,
+            reference_clause=reference_clause,
+            constraints=constraints,
+            issues=issues,
+            user_prompt=user_prompt,
+            additional_instructions=additional_instructions
         )
         
         # Step 2: Reflect on the answer
@@ -688,7 +857,14 @@ class ACEPipeline:
         question: str,
         stream_callback: Optional[Callable[[str], None]] = None,
         use_retrieval: bool = True,
-        output_format: str = "text"  # "text" or "prosemirror"
+        output_format: str = "text",  # "text" or "prosemirror"
+        mode: str = "answer",  # "answer", "enrich", "derive", "remediate", "explore"
+        # Reformulation-specific parameters
+        reference_clause: str = "",
+        constraints: str = "",
+        issues: str = "",
+        user_prompt: str = "",
+        additional_instructions: str = ""
     ) -> GeneratorOutput:
         """
         Only run the Generator without reflection or curation.
@@ -696,10 +872,16 @@ class ACEPipeline:
         Useful for inference after the playbook has been trained.
         
         Args:
-            question: The user's question
+            question: The user's question or clause to reformulate
             stream_callback: Optional callback for streaming
             use_retrieval: Whether to use semantic retrieval
             output_format: "text" for plain text, "prosemirror" for ProseMirror JSON
+            mode: "answer" for Q&A, or reformulation: "enrich", "derive", "remediate", "explore"
+            reference_clause: Canon clause for reformulation modes
+            constraints: Constraints for "derive" mode
+            issues: Issues for "remediate" mode
+            user_prompt: User request for "explore" mode
+            additional_instructions: Extra guidance for reformulation
         """
         playbook = self.playbook_manager.get_playbook()
         return self.generator.generate(
@@ -707,7 +889,13 @@ class ACEPipeline:
             playbook=playbook,
             stream_callback=stream_callback,
             use_retrieval=use_retrieval,
-            output_format=output_format
+            output_format=output_format,
+            mode=mode,
+            reference_clause=reference_clause,
+            constraints=constraints,
+            issues=issues,
+            user_prompt=user_prompt,
+            additional_instructions=additional_instructions
         )
     
     def auto_cleanup(self, harmful_threshold: int = 5,
