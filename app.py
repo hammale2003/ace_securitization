@@ -256,12 +256,7 @@ def render_input():
             key="input_main"
         )
         
-        reference_clause = st.text_area(
-            "Reference Clause (Canon) - Optional:",
-            height=100,
-            placeholder="Paste the Canon/reference clause for comparison...",
-            key="input_reference"
-        )
+        reference_clause = ""  # Removed from UI
         
         # Mode-specific inputs
         if mode == "derive":
