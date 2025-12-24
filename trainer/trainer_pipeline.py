@@ -188,22 +188,31 @@ class TrainerPipeline:
         
         return self.run_from_document(document)
     
-    def run_from_document(self, document: ParsedDocument) -> TrainerPipelineResult:
+    def run_from_document(self, document: ParsedDocument, progress_callback=None) -> TrainerPipelineResult:
         """
         Run trainer pipeline on a parsed document.
         
         Args:
             document: Parsed document
+            progress_callback: Optional callback function(current_step, total_steps, step_name, percentage)
         
         Returns:
             TrainerPipelineResult
         """
         logger.info(f"Starting Trainer Mode for: {document.title} (Type: {document.document_type})")
         
+        total_steps = 5
+        
+        def update_progress(step: int, step_name: str):
+            if progress_callback:
+                percentage = int((step / total_steps) * 100)
+                progress_callback(step, total_steps, step_name, percentage)
+        
         # Get current playbook
         playbook = self.playbook_manager.get_playbook()
         
         # Step 1: Extract knowledge (with batch processing for speed)
+        update_progress(1, "Extraction des connaissances")
         total_clauses = len(document.get_all_clauses_flat())
         logger.info(f"Step 1: Extracting knowledge from {total_clauses} clauses (Granularity: {self.config.granularity_level.value})")
         extracted_items = self.knowledge_extractor.extract_from_document(
@@ -222,6 +231,7 @@ class TrainerPipeline:
             extraction_by_type[item.knowledge_type] = extraction_by_type.get(item.knowledge_type, 0) + 1
         
         # Step 2: Classify knowledge
+        update_progress(2, "Classification des connaissances")
         logger.info("Step 2: Classifying extracted knowledge...")
         classified_items = self.knowledge_classifier.classify_batch(
             extracted_items=extracted_items,
@@ -230,6 +240,7 @@ class TrainerPipeline:
         logger.info(f"Classified {len(classified_items)} items")
         
         # Step 3: Validate knowledge
+        update_progress(3, "Validation des connaissances")
         logger.info("Step 3: Validating classified knowledge...")
         validated_items = self.knowledge_validator.validate_batch(
             classified_items=classified_items,
@@ -240,6 +251,7 @@ class TrainerPipeline:
         logger.info(f"Validated {len(validated_items)} items ({valid_count} valid)")
         
         # Step 4: Enrich playbook
+        update_progress(4, "Enrichissement du playbook")
         logger.info("Step 4: Enriching playbook...")
         enrichment_result = self.playbook_enricher.enrich(
             validated_items=validated_items,
@@ -249,6 +261,7 @@ class TrainerPipeline:
         logger.info(enrichment_result.enrichment_summary)
         
         # Step 5: Update retriever index if available
+        update_progress(5, "Mise à jour de l'index")
         if self.retriever and enrichment_result.total_added > 0:
             logger.info("Step 5: Updating retriever index...")
             updated_playbook = self.playbook_manager.get_playbook()

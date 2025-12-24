@@ -1173,56 +1173,68 @@ def render_trainer_mode():
                 st.error(f"Error generating preview: {str(e)}")
     
     if enrich_btn and json_input:
-        with st.spinner("Enriching playbook... This may take a few minutes."):
-            try:
-                document = st.session_state.trainer_pipeline.document_parser.parse_json_string(json_input)
-                
-                # Update config with performance settings
-                st.session_state.trainer_pipeline.config.extraction_types = extraction_types
-                st.session_state.trainer_pipeline.config.min_extraction_confidence = min_confidence
-                st.session_state.trainer_pipeline.config.granularity_level = GranularityLevel(granularity_level)
-                st.session_state.trainer_pipeline.config.batch_size = batch_size
-                st.session_state.trainer_pipeline.config.max_clauses_full = max_clauses_full
-                
-                # Run enrichment
-                result = st.session_state.trainer_pipeline.run_from_document(document)
-                
-                st.success("Playbook enriched successfully!")
-                
-                # Show summary
-                st.markdown("### Enrichment Summary")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Extracted", result.total_extracted)
-                col2.metric("Validated", result.total_validated)
-                col3.metric("Added", result.enrichment_result.total_added)
-                col4.metric("Skipped", result.enrichment_result.total_skipped)
-                
-                # Extraction by type
-                st.markdown("### Extraction by Type")
-                for k_type, count in result.extraction_by_type.items():
-                    st.metric(k_type, count)
-                
-                # Added bullets
-                if result.enrichment_result.added_bullets:
-                    st.markdown("### Added Bullets")
-                    for bullet in result.enrichment_result.added_bullets[:10]:  # Show first 10
-                        with st.expander(f"**{bullet.id}**"):
-                            st.markdown(bullet.content)
-                    
-                    if len(result.enrichment_result.added_bullets) > 10:
-                        st.caption(f"... and {len(result.enrichment_result.added_bullets) - 10} more bullets")
-                
-                # Skipped items
-                if result.enrichment_result.skipped_items:
-                    with st.expander(f"Skipped Items ({len(result.enrichment_result.skipped_items)})"):
-                        for item in result.enrichment_result.skipped_items[:5]:
-                            st.warning(f"**Reason:** {item['reason']}")
-                            st.caption(item['content'])
+        try:
+            document = st.session_state.trainer_pipeline.document_parser.parse_json_string(json_input)
             
-            except Exception as e:
-                st.error(f"Error enriching playbook: {str(e)}")
-                st.exception(e)
+            # Update config with performance settings
+            st.session_state.trainer_pipeline.config.extraction_types = extraction_types
+            st.session_state.trainer_pipeline.config.min_extraction_confidence = min_confidence
+            st.session_state.trainer_pipeline.config.granularity_level = GranularityLevel(granularity_level)
+            st.session_state.trainer_pipeline.config.batch_size = batch_size
+            st.session_state.trainer_pipeline.config.max_clauses_full = max_clauses_full
+            
+            # Create progress bar and status text
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Progress callback function
+            def update_progress(current_step, total_steps, step_name, percentage):
+                progress_bar.progress(percentage / 100)
+                status_text.text(f"Enrichissement du playbook... {percentage}% - {step_name}")
+            
+            # Run enrichment with progress callback
+            result = st.session_state.trainer_pipeline.run_from_document(document, progress_callback=update_progress)
+            
+            # Clear progress indicators
+            progress_bar.empty()
+            status_text.empty()
+            
+            st.success("Playbook enriched successfully!")
+            
+            # Show summary
+            st.markdown("### Enrichment Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Extracted", result.total_extracted)
+            col2.metric("Validated", result.total_validated)
+            col3.metric("Added", result.enrichment_result.total_added)
+            col4.metric("Skipped", result.enrichment_result.total_skipped)
+            
+            # Extraction by type
+            st.markdown("### Extraction by Type")
+            for k_type, count in result.extraction_by_type.items():
+                st.metric(k_type, count)
+            
+            # Added bullets
+            if result.enrichment_result.added_bullets:
+                st.markdown("### Added Bullets")
+                for bullet in result.enrichment_result.added_bullets[:10]:  # Show first 10
+                    with st.expander(f"**{bullet.id}**"):
+                        st.markdown(bullet.content)
+                
+                if len(result.enrichment_result.added_bullets) > 10:
+                    st.caption(f"... and {len(result.enrichment_result.added_bullets) - 10} more bullets")
+            
+            # Skipped items
+            if result.enrichment_result.skipped_items:
+                with st.expander(f"Skipped Items ({len(result.enrichment_result.skipped_items)})"):
+                    for item in result.enrichment_result.skipped_items[:5]:
+                        st.warning(f"**Reason:** {item['reason']}")
+                        st.caption(item['content'])
+        
+        except Exception as e:
+            st.error(f"Error enriching playbook: {str(e)}")
+            st.exception(e)
 
 
 def main():
