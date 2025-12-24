@@ -3,7 +3,7 @@ Unit tests for the ACE Securitization System - Extended Features.
 
 Tests for semantic retrieval and extended operations (REMOVE, MODIFY, MERGE).
 
-Run with: pytest test_extended.py -v
+Run with: pytest test_ace_securitization.py -v
 """
 import pytest
 import json
