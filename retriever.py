@@ -17,6 +17,7 @@ from embeddings import (
     create_embedding_model,
     cosine_similarity_matrix
 )
+from utils import logger
 
 
 @dataclass
@@ -28,7 +29,7 @@ class RetrieverConfig:
     max_tokens_budget: int = 2000  # Approximate token limit for context
     
     # Embedding configuration
-    embedding_provider: str = "simple"  # simple, sentence-transformers, openai
+    embedding_provider: str = "sentence-transformers"  
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 256
     
@@ -427,7 +428,7 @@ class PlaybookRetriever:
                 
                 return True
         except Exception as e:
-            print(f"Warning: Could not load index: {e}")
+            logger.warning(f"Could not load index: {e}")
         
         return False
     

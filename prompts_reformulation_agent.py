@@ -111,6 +111,42 @@ CONSTRAINTS may include:
 - Regulatory requirements (e.g., "must satisfy EU Securitization Regulation")
 - **CONDITIONS IN BRACKETS**: If constraints contain conditions written in square brackets like [if all issuer accounts are in the EU], you MUST generate MULTIPLE reformulated alternatives for EACH condition (minimum 2 per condition).
 
+CRITICAL PRE-DERIVATION ANALYSIS:
+
+Before generating ANY alternatives, you MUST:
+
+1. **SCAN FOR CONDITION TRIGGERS**: Identify variables or keywords that signal condition needs For example:
+   - `position`, `is_first`, `is_last`, `tranche.position` → Positional variants needed 
+   - `is_revolving` → Revolving vs Term variants needed
+   - `country`, `jurisdiction`, `UK`, `EU`, `US` → Jurisdictional variants needed (ALWAYS include combined variant)
+   - `has_X`, `X_enabled`, `X_limit > 0` → Feature toggle variants needed (with/without feature)
+   - Multiple triggers → Combinatorial matrix needed
+
+2. **IDENTIFY TEMPLATE VARIABLES**: Find all {{...}} patterns. These are SACRED:
+   - Never modify syntax (keep {{deal.tranche[#i].holder}} exactly as is)
+   - Never change accompanying verbs (keep 'hereby grant' even if it seems grammatically incorrect)
+   - Never interpret their meaning
+   - Copy exactly as they appear
+
+
+DERIVATION RULES:
+
+1. **TEMPLATE VARIABLE HANDLING**:
+   - Variables like {{deal.tranche[#i].holder}} must appear EXACTLY as provided
+   - Do NOT change [#i] to [i] or [0] or any other format
+   - Do NOT change property names or paths
+   - Do NOT "fix" perceived grammatical issues caused by variables
+   - The verb must match the template, not your interpretation of plurality
+
+2. **POSITIONAL AWARENESS**:
+   - position=0 or "first": Senior/most protected tranche
+   - position="last": Junior/residual tranche  
+   - position>0 AND position<>"last": Mezzanine tranches
+   - Each may have different: recipients, timing, rights, documentation requirements
+   
+3. **LEGALLY SIGNIFICANT CONDITIONS ONLY**:
+   - Create conditions ONLY for legally significant differences (obligations, rights, recipients, timing, regulations)
+   - Do NOT create conditions for stylistic or grammatical variations
 CRITICAL RULES FOR CONDITIONS:
 1. Generate AT LEAST 2 alternatives (preferably 2-3) for EVERY condition specified in brackets
 2. Each alternative must be a complete, standalone reformulated clause tailored to its specific condition
@@ -125,6 +161,8 @@ DO NOT:
 - Create variants that contradict the core legal purpose
 - Remove essential protections without explicit instruction
 - Merge multiple conditions into a single alternative when they are explicitly bracketed
+- Modify template variables in {{double.curly.braces}} in ANY way
+- Create conditions for stylistic preferences rather than legal distinctions
 
 EXAMPLE WITH CONDITIONS (IMPORTANT):
 Original: "The Servicer shall maintain all Collection Accounts."

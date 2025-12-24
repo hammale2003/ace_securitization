@@ -184,6 +184,20 @@ Tasks:
 
 8. **IMPORTANT - Ground Truth Definitions**: If the user's question asks to define a term and ground truth is provided with the correct definition, you MUST flag this as a definition that needs to be added to the playbook. Extract the term being defined and the definition text from the ground truth.
 
+9. **CRITICAL - Conditional Patterns in Ground Truth**: When ground truth contains conditional variants or templates with conditions (e.g., "[if condition A] text A [if condition B] text B"), you MUST:
+   - **Identify ALL conditions**: Extract every condition in square brackets [if ...]
+   - **Classify condition types**: Binary (A/B), Ordinal (first/middle/last), Jurisdictional (UK/EU/both), Combinatorial (A AND B)
+   - **Check completeness**: For jurisdictional conditions, verify combined variants exist (UK+EU, not just UK and EU separately)
+   - **Extract as strategies**: Document the conditional pattern as a reusable strategy
+   - **Extract as templates**: If it's a clause template with conditions, add it to templates section
+   - **Flag missing variants**: If the Generator's response lacks necessary conditional variants that are in ground truth, this is a CRITICAL pitfall
+
+10. **Template Variable Recognition**: If ground truth contains template variables in {{double.curly.braces}}:
+   - These are DATA PLACEHOLDERS (e.g., {{deal.tranche[#i].holder}})
+   - Flag if Generator modified variable syntax (e.g., changing [#i] to [i])
+   - Flag if Generator changed accompanying verbs (e.g., 'hereby grant' to 'shall grant')
+   - This is a CRITICAL pitfall if variables were mutated
+
 Key securitization concepts to check for:
 - Correct characterization of true sale requirements
 - Proper understanding of bankruptcy remoteness
@@ -220,6 +234,22 @@ Return your response as a JSON object:
     "term": "Term Name",
     "definition": "The provided ground truth definition text",
     "should_add_to_playbook": true
+  },
+  "conditional_analysis": {
+    "has_conditions": true,
+    "condition_types_found": ["jurisdictional", "binary", "positional",... ],
+    "all_conditions_extracted": [
+      "[if condition A] text variant A",
+      "[if condition B] text variant B",
+      "[if condition A AND B] combined text variant"
+    ],
+    "completeness_issues": [
+      "Missing combined variant for UK+EU jurisdictional condition",
+      "Missing 'last' position variant"
+    ],
+    "template_variables_found": ["{{deal.tranche[#i].holder}}", "{{deal.tranche[#i].name}}"],
+    "variable_mutation_detected": false,
+    "suggested_template": "Full template text with all conditions to add to playbook templates section"
   }
 }
 
@@ -229,6 +259,13 @@ IMPORTANT NOTES:
 - Pitfalls should be specific warnings (e.g., "Avoid defining bankruptcy remoteness without mentioning SPV structural requirements")
 - Include `ground_truth_definition` ONLY when the question asks to define a term AND ground truth is provided
 - If ground truth is provided, your analysis MUST be centered on comparing it with the Generator's output
+- **CONDITIONAL ANALYSIS REQUIRED**: Always include `conditional_analysis` object when analyzing ground truth. Set `has_conditions` to false if no conditional patterns found.
+- When conditions ARE found in ground truth:
+  * Extract ALL conditions verbatim
+  * Classify each condition type (binary, ordinal, jurisdictional, combinatorial, etc )
+  * Check for completeness (jurisdictional MUST have combined variants like UK+EU)
+  * Identify any template variables {{...}} and check if Generator preserved them exactly
+  * Suggest adding the full conditional template to playbook if it represents a reusable pattern
 
 Your output must be valid JSON. Do not include any text before or after the JSON object."""
 
@@ -289,18 +326,35 @@ Tasks:
 
 3. **CRITICAL - Ground Truth Definitions**: If the Reflector provides a `ground_truth_definition` with `should_add_to_playbook: true`, you MUST create an ADD operation to add this definition to the `definitions` section. Format the definition content as: "[TERM]: [DEFINITION TEXT]"
 
-4. Avoid redundancy. If a similar bullet exists, do NOT add duplicates. Instead, consider MODIFY to improve the existing bullet.
+4. **CRITICAL - Conditional Patterns & Templates**: If the Reflector provides `conditional_analysis` with `has_conditions: true`:
+   - **Extract condition types**: Review `condition_types_found` (binary, ordinal, jurisdictional, combinatorial , and so on )
+   - **Add completeness strategies**: If `completeness_issues` are identified (e.g., missing combined UK+EU variant), create ADD operations for strategies that address these gaps
+   - **Add templates**: If `suggested_template` is provided and it represents a reusable conditional pattern, create an ADD operation to the `templates` section with the full template including all conditional variants
+   - **Template variable protection**: If `variable_mutation_detected: true`, create an ADD operation for a pitfall warning about preserving template variable syntax
+   - **Condition-specific strategies**: For each condition type found, ensure playbook has strategies for handling that type (e.g., "Jurisdictional Completeness Rule" for jurisdictional conditions)
 
-5. If bullets are consistently harmful (tagged harmful multiple times), propose REMOVE operations.
+5. **Template Variable Sanctity**: If the Reflector identifies template variables ({{...}}) in ground truth:
+   - Ensure playbook has a strategy about preserving template variable syntax exactly
+   - If Generator mutated variables, create a pitfall entry about this specific error pattern
 
-6. If two or more bullets cover the same concept redundantly, propose MERGE operations.
+6. Avoid redundancy. If a similar bullet exists, do NOT add duplicates. Instead, consider MODIFY to improve the existing bullet.
 
-7. Structure new content under the appropriate section:
-   - `strategies`: General approaches, best practices, methodologies
-   - `pitfalls`: Common mistakes, things to avoid, red flags
-   - `templates`: Reusable clause structures, boilerplate language patterns
-   - `definitions`: Key terms and their precise meanings in securitization
-   - `code_snippets`: Useful code patterns (if applicable)
+7. If bullets are consistently harmful (tagged harmful multiple times), propose REMOVE operations.
+
+8. If two or more bullets cover the same concept redundantly, propose MERGE operations.
+
+9. **Condition Pattern Recognition**: When adding templates with conditional patterns:
+   - Ensure ALL condition variants are included in the template (don't add partial templates)
+   - For jurisdictional conditions: MUST include combined cross-border variant (UK, EU, UK+EU)
+   - For positional conditions: MUST include all positions (first/senior, middle/mezzanine, last/junior)
+   - For binary conditions: MUST include both states (TRUE/FALSE, revolving/term, etc.)
+
+10. Structure new content under the appropriate section:
+   - `strategies`: General approaches, best practices, methodologies, condition handling rules
+   - `pitfalls`: Common mistakes, things to avoid, red flags, template variable mutations
+   - `templates`: Reusable clause structures with ALL conditional variants, boilerplate patterns
+   - `definitions`: Key terms and their precise meanings, condition trigger keywords
+
 
 Available Operations:
 
@@ -343,6 +397,21 @@ Return your output as a JSON object:
       "type": "ADD",
       "section": "strategies",
       "content": "Always verify the five elements of true sale before drafting transfer language."
+    },
+    {
+      "type": "ADD",
+      "section": "templates",
+      "content": "[if position = 0] 'during the Revolving Period' [if position > 0 AND position <> 'last'] 'from (and including) the first day of the Revolving Period to (but excluding) the Termination Date' [if position = 'last'] 'from (and including) the Closing Date to (but excluding) the Final Maturity Date'"
+    },
+    {
+      "type": "ADD",
+      "section": "pitfalls",
+      "content": "Template Variable Mutation: Changing {{deal.tranche[#i].holder}} to {{deal.tranche[i].holder}} or any variation. Template variables are EXACT STRINGS parsed by external systems. Even minor changes break data binding."
+    },
+    {
+      "type": "ADD",
+      "section": "strategies",
+      "content": "Jurisdictional Completeness Rule: When deriving variants for jurisdictions (UK, EU, US, etc.), ALWAYS generate: (1) Each jurisdiction standalone, AND (2) The combined/cross-border variant. Missing the combined variant creates coverage gaps for cross-border deals."
     },
     {
       "type": "MODIFY",

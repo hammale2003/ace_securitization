@@ -16,6 +16,8 @@ from typing import Optional
 from config import ACEConfig, LLMConfig, PlaybookConfig
 from playbook import PlaybookManager, Playbook, deduplicate_playbook
 from agents import ACEPipeline, GeneratorOutput, ReflectorOutput, CuratorOutput
+from trainer import TrainerPipeline, TrainerConfig
+from trainer.granularity import GranularityLevel
 
 
 st.set_page_config(
@@ -30,6 +32,8 @@ def init_session_state():
     """Initialize session state variables."""
     if "pipeline" not in st.session_state:
         st.session_state.pipeline = None
+    if "trainer_pipeline" not in st.session_state:
+        st.session_state.trainer_pipeline = None
     if "history" not in st.session_state:
         st.session_state.history = []
     if "current_result" not in st.session_state:
@@ -62,7 +66,7 @@ def render_sidebar():
     model_options = {
         "openai": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o"],
         "anthropic": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
-        "google": ["gemini-3-pro-preview"],
+        "google": ["gemini-3-pro-preview","gemini-2.5-pro"],
         "mock": ["mock-model"]
     }
     
@@ -160,6 +164,15 @@ def render_sidebar():
             
             st.session_state.pipeline = ACEPipeline(ace_config)
             st.session_state.config = ace_config
+            
+            # Initialize trainer pipeline
+            trainer_config = TrainerConfig(llm_config=llm_config)
+            st.session_state.trainer_pipeline = TrainerPipeline(
+                config=trainer_config,
+                playbook_manager=st.session_state.pipeline.playbook_manager,
+                retriever=st.session_state.pipeline.retriever
+            )
+            
             st.sidebar.success("Pipeline initialized!")
             
         except Exception as e:
@@ -938,26 +951,312 @@ def render_history():
             st.markdown(f"*{item['timestamp']}*")
 
 
-def main():
-    """Main application entry point."""
-    render_sidebar()
-    render_header()
+def _estimate_processing_time(extraction_types: list, batch_size: int, max_clauses: int) -> str:
+    """Estimate processing time based on settings."""
+    num_types = len(extraction_types)
+    num_batches = (max_clauses + batch_size - 1) // batch_size
+    total_llm_calls = num_types * num_batches
+    
+    # Estimate ~3 seconds per LLM call
+    estimated_seconds = total_llm_calls * 3
+    
+    if estimated_seconds < 60:
+        return f"~{estimated_seconds} seconds"
+    elif estimated_seconds < 3600:
+        minutes = estimated_seconds / 60
+        return f"~{minutes:.1f} minutes"
+    else:
+        hours = estimated_seconds / 3600
+        return f"~{hours:.1f} hours"
+
+
+def render_trainer_mode():
+    """Render Trainer Mode interface."""
+    st.title("Trainer Mode")
+    st.caption("Enrich playbook from real securitization documents")
+    
+    if not st.session_state.trainer_pipeline:
+        st.warning("Initialize the pipeline first to use Trainer Mode")
+        return
+    
     
     st.divider()
     
-    col1, col2 = st.columns([2, 1])
+    # Document input
+    st.subheader("1. Upload Document")
+    
+    uploaded_file = st.file_uploader(
+        "Upload JSON or TXT file:",
+        type=["json", "txt"],
+        help="Upload your minified JSON document from securitization transaction"
+    )
+    
+    json_input = None
+    if uploaded_file:
+        json_input = uploaded_file.read().decode("utf-8")
+        st.success(f"✅ Loaded: {uploaded_file.name} ({len(json_input)} characters)")
+        with st.expander("Preview uploaded content"):
+            st.code(json_input[:500] + "..." if len(json_input) > 500 else json_input, language="json")
+    
+    # Extraction settings
+    st.subheader("2. Configure Extraction")
+    
+    # Granularity Level Selection
+    st.markdown("**Granularity Level:**")
+    
+    granularity_level = st.selectbox(
+        "Processing Granularity:",
+        options=[
+            GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE.value,
+            GranularityLevel.BATCH.value,
+            GranularityLevel.FULL_DOCUMENT.value
+        ],
+        index=1,  # Default to BATCH
+        format_func=lambda x: {
+            "operative_clause_by_clause": "Operative Clause-by-Clause (Most Accurate)",
+            "batch": "Batch Processing (Balanced)",
+            "full_document": "Full Document (Fastest)"
+        }.get(x, x),
+        help="Choose how the document is processed. Higher granularity = better accuracy but higher cost."
+    )
+    
+    granularity_enum = GranularityLevel(granularity_level)
+    st.info(GranularityLevel.get_description(granularity_enum))
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
     
     with col1:
-        inputs = render_input()
-        
-        if inputs["run_full"] or inputs["generate_only"]:
-            run_pipeline(inputs, inputs["run_full"])
-        
-        st.divider()
-        render_results()
+        extraction_types = st.multiselect(
+            "Knowledge Types to Extract:",
+            options=["strategies", "definitions", "templates", "pitfalls", "code_snippets"],
+            default=["strategies", "definitions"],
+            help="⚡ Tip: Select fewer types for faster processing"
+        )
     
     with col2:
-        render_history()
+        min_confidence = st.slider(
+            "Minimum Confidence:",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.6,
+            step=0.05,
+            help="Higher value = fewer but better quality extractions"
+        )
+    
+    # Performance settings - only show for BATCH mode
+    if granularity_enum == GranularityLevel.BATCH:
+        with st.expander("⚡ Performance Settings (Advanced)", expanded=False):
+            st.caption("Adjust these settings to control processing speed vs completeness")
+            
+            perf_col1, perf_col2 = st.columns(2)
+            
+            with perf_col1:
+                batch_size = st.slider(
+                    "Batch Size:",
+                    min_value=5,
+                    max_value=30,
+                    value=15,
+                    step=5,
+                    help="Number of clauses per LLM call. Higher = faster but uses more tokens"
+                )
+                
+                max_clauses_preview = st.number_input(
+                    "Max Clauses (Preview):",
+                    min_value=10,
+                    max_value=100,
+                    value=30,
+                    step=10,
+                    help="Limit clauses for preview mode (faster testing)"
+                )
+            
+            with perf_col2:
+                enable_full_processing = st.checkbox(
+                    "Process All Clauses",
+                    value=False,
+                    help="Uncheck to limit processing to first N clauses"
+                )
+                
+                if not enable_full_processing:
+                    max_clauses_full = st.number_input(
+                        "Max Clauses (Full):",
+                        min_value=50,
+                        max_value=1000,
+                        value=100,
+                        step=50,
+                        help="Limit clauses for full enrichment"
+                    )
+                else:
+                    max_clauses_full = None
+            
+            st.info(f"💡 Estimated processing time with current settings: {_estimate_processing_time(extraction_types, batch_size, max_clauses_full or 500)}")
+    else:
+        # Set default values for non-batch modes
+        batch_size = 15
+        max_clauses_preview = 30
+        max_clauses_full = None
+    
+    # Action buttons
+    st.subheader("3. Run Extraction")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        preview_btn = st.button("Preview", type="secondary", use_container_width=True)
+    
+    with col2:
+        enrich_btn = st.button("Enrich Playbook", type="primary", use_container_width=True)
+    
+    with col3:
+        parse_btn = st.button("Parse Only", type="secondary", use_container_width=True)
+    
+    st.divider()
+    
+    # Results area
+    if parse_btn and json_input:
+        with st.spinner("Parsing document..."):
+            try:
+                document = st.session_state.trainer_pipeline.document_parser.parse_json_string(json_input)
+                
+                st.success("Document parsed successfully!")
+                
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Document", document.title)
+                col2.metric("Type", document.document_type)
+                col3.metric("Total Clauses", len(document.get_all_clauses_flat()))
+                
+                with st.expander("Document Structure", expanded=True):
+                    hierarchy = st.session_state.trainer_pipeline.document_parser.get_clause_hierarchy(document)
+                    st.code(hierarchy, language="text")
+            
+            except Exception as e:
+                st.error(f"Error parsing document: {str(e)}")
+    
+    if preview_btn and json_input:
+        with st.spinner("Generating preview..."):
+            try:
+                document = st.session_state.trainer_pipeline.document_parser.parse_json_string(json_input)
+                
+                # Update config with performance settings
+                st.session_state.trainer_pipeline.config.extraction_types = extraction_types
+                st.session_state.trainer_pipeline.config.min_extraction_confidence = min_confidence
+                st.session_state.trainer_pipeline.config.granularity_level = GranularityLevel(granularity_level)
+                st.session_state.trainer_pipeline.config.batch_size = batch_size
+                st.session_state.trainer_pipeline.config.max_clauses_preview = max_clauses_preview
+                
+                preview = st.session_state.trainer_pipeline.get_extraction_preview(document, max_items=20)
+                
+                st.success("Preview generated!")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Total Clauses", preview["total_clauses"])
+                col2.metric("Extracted", preview["total_extracted"])
+                col3.metric("Valid", preview["total_valid"])
+                col4.metric("Will Add", preview["total_valid"])
+                
+                st.markdown("### Preview by Type")
+                
+                for k_type, items in preview["preview_by_type"].items():
+                    with st.expander(f"**{k_type.upper()}** ({len(items)} items)", expanded=True):
+                        for i, item in enumerate(items[:5], 1):  # Show first 5
+                            is_valid = "[VALID]" if item["is_valid"] else "[INVALID]"
+                            is_dup = "[DUPLICATE]" if item["is_duplicate"] else "[NEW]"
+                            
+                            st.markdown(f"**{i}. {is_valid} {is_dup}** (Conf: {item['confidence']:.2f}, Imp: {item['importance']:.2f})")
+                            st.info(item["content"])
+                        
+                        if len(items) > 5:
+                            st.caption(f"... and {len(items) - 5} more items")
+            
+            except Exception as e:
+                st.error(f"Error generating preview: {str(e)}")
+    
+    if enrich_btn and json_input:
+        with st.spinner("Enriching playbook... This may take a few minutes."):
+            try:
+                document = st.session_state.trainer_pipeline.document_parser.parse_json_string(json_input)
+                
+                # Update config with performance settings
+                st.session_state.trainer_pipeline.config.extraction_types = extraction_types
+                st.session_state.trainer_pipeline.config.min_extraction_confidence = min_confidence
+                st.session_state.trainer_pipeline.config.granularity_level = GranularityLevel(granularity_level)
+                st.session_state.trainer_pipeline.config.batch_size = batch_size
+                st.session_state.trainer_pipeline.config.max_clauses_full = max_clauses_full
+                
+                # Run enrichment
+                result = st.session_state.trainer_pipeline.run_from_document(document)
+                
+                st.success("Playbook enriched successfully!")
+                
+                # Show summary
+                st.markdown("### Enrichment Summary")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Extracted", result.total_extracted)
+                col2.metric("Validated", result.total_validated)
+                col3.metric("Added", result.enrichment_result.total_added)
+                col4.metric("Skipped", result.enrichment_result.total_skipped)
+                
+                # Extraction by type
+                st.markdown("### Extraction by Type")
+                for k_type, count in result.extraction_by_type.items():
+                    st.metric(k_type, count)
+                
+                # Added bullets
+                if result.enrichment_result.added_bullets:
+                    st.markdown("### Added Bullets")
+                    for bullet in result.enrichment_result.added_bullets[:10]:  # Show first 10
+                        with st.expander(f"**{bullet.id}**"):
+                            st.markdown(bullet.content)
+                    
+                    if len(result.enrichment_result.added_bullets) > 10:
+                        st.caption(f"... and {len(result.enrichment_result.added_bullets) - 10} more bullets")
+                
+                # Skipped items
+                if result.enrichment_result.skipped_items:
+                    with st.expander(f"Skipped Items ({len(result.enrichment_result.skipped_items)})"):
+                        for item in result.enrichment_result.skipped_items[:5]:
+                            st.warning(f"**Reason:** {item['reason']}")
+                            st.caption(item['content'])
+            
+            except Exception as e:
+                st.error(f"Error enriching playbook: {str(e)}")
+                st.exception(e)
+
+
+def main():
+    """Main application entry point."""
+    render_sidebar()
+    
+    # Page selector
+    page = st.sidebar.radio(
+        "Navigation:",
+        options=["Generator", "Trainer Mode"],
+        label_visibility="collapsed"
+    )
+    
+    if page == "Generator":
+        render_header()
+        
+        st.divider()
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            inputs = render_input()
+            
+            if inputs["run_full"] or inputs["generate_only"]:
+                run_pipeline(inputs, inputs["run_full"])
+            
+            st.divider()
+            render_results()
+        
+        with col2:
+            render_history()
+    
+    elif page == "Trainer Mode":
+        render_trainer_mode()
 
 
 if __name__ == "__main__":

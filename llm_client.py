@@ -7,10 +7,12 @@ Includes streaming support and JSON response parsing.
 import json
 import re
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Generator, Union
+from typing import Dict, List, Any, Optional, Generator
 from dataclasses import dataclass
 
 from config import LLMConfig
+from errors import LLMError
+from utils import logger
 
 
 @dataclass
@@ -120,26 +122,32 @@ class OpenAIClient(LLMClient):
         return [{"role": m.role, "content": m.content} for m in messages]
     
     def complete(self, messages: List[Message]) -> LLMResponse:
-        response = self.client.chat.completions.create(
-            model=self.config.model,
-            messages=self._convert_messages(messages),
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens
-        )
-        
-        usage = None
-        if response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens
-            }
-        
-        return LLMResponse(
-            content=response.choices[0].message.content,
-            raw_response=response,
-            usage=usage
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.config.model,
+                messages=self._convert_messages(messages),
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens
+            )
+            
+            usage = None
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            
+            logger.debug("OpenAI API call completed", extra={"tokens": usage.get("total_tokens", 0) if usage else 0})
+            
+            return LLMResponse(
+                content=response.choices[0].message.content,
+                raw_response=response,
+                usage=usage
+            )
+        except Exception as e:
+            logger.error("OpenAI API call failed", exc_info=True)
+            raise LLMError(f"OpenAI API error: {str(e)}", {"provider": "openai", "model": self.config.model})
     
     def stream(self, messages: List[Message]) -> Generator[str, None, None]:
         stream = self.client.chat.completions.create(
@@ -185,28 +193,34 @@ class GoogleClient(LLMClient):
         return system_instruction, history
     
     def complete(self, messages: List[Message]) -> LLMResponse:
-        system_instruction, history = self._convert_messages(messages)
-        
-        # Create model with system instruction if provided
-        if system_instruction:
-            model = self.genai.GenerativeModel(
-                self.config.model,
-                system_instruction=system_instruction
+        try:
+            system_instruction, history = self._convert_messages(messages)
+            
+            # Create model with system instruction if provided
+            if system_instruction:
+                model = self.genai.GenerativeModel(
+                    self.config.model,
+                    system_instruction=system_instruction
+                )
+            else:
+                model = self.model
+            
+            # Start chat if there are multiple messages
+            if len(history) > 1:
+                chat = model.start_chat(history=history[:-1])
+                response = chat.send_message(history[-1]["parts"][0])
+            else:
+                response = model.generate_content(history[0]["parts"][0] if history else "")
+            
+            logger.debug("Google API call completed", extra={"provider": "google", "model": self.config.model})
+            
+            return LLMResponse(
+                content=response.text,
+                raw_response=response
             )
-        else:
-            model = self.model
-        
-        # Start chat if there are multiple messages
-        if len(history) > 1:
-            chat = model.start_chat(history=history[:-1])
-            response = chat.send_message(history[-1]["parts"][0])
-        else:
-            response = model.generate_content(history[0]["parts"][0] if history else "")
-        
-        return LLMResponse(
-            content=response.text,
-            raw_response=response
-        )
+        except Exception as e:
+            logger.error("Google API call failed", exc_info=True)
+            raise LLMError(f"Google API error: {str(e)}", {"provider": "google", "model": self.config.model})
     
     def stream(self, messages: List[Message]) -> Generator[str, None, None]:
         system_instruction, history = self._convert_messages(messages)
@@ -262,34 +276,40 @@ class AnthropicClient(LLMClient):
         return system, anthropic_messages
     
     def complete(self, messages: List[Message]) -> LLMResponse:
-        system, anthropic_messages = self._convert_messages(messages)
-        
-        kwargs = {
-            "model": self.config.model,
-            "messages": anthropic_messages,
-            "max_tokens": self.config.max_tokens
-        }
-        if system:
-            kwargs["system"] = system
-        
-        response = self.client.messages.create(**kwargs)
-        
-        content = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                content += block.text
-        
-        usage = {
-            "prompt_tokens": response.usage.input_tokens,
-            "completion_tokens": response.usage.output_tokens,
-            "total_tokens": response.usage.input_tokens + response.usage.output_tokens
-        }
-        
-        return LLMResponse(
-            content=content,
-            raw_response=response,
-            usage=usage
-        )
+        try:
+            system, anthropic_messages = self._convert_messages(messages)
+            
+            kwargs = {
+                "model": self.config.model,
+                "messages": anthropic_messages,
+                "max_tokens": self.config.max_tokens
+            }
+            if system:
+                kwargs["system"] = system
+            
+            response = self.client.messages.create(**kwargs)
+            
+            content = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    content += block.text
+            
+            usage = {
+                "prompt_tokens": response.usage.input_tokens,
+                "completion_tokens": response.usage.output_tokens,
+                "total_tokens": response.usage.input_tokens + response.usage.output_tokens
+            }
+            
+            logger.debug("Anthropic API call completed", extra={"tokens": usage.get("total_tokens", 0)})
+            
+            return LLMResponse(
+                content=content,
+                raw_response=response,
+                usage=usage
+            )
+        except Exception as e:
+            logger.error("Anthropic API call failed", exc_info=True)
+            raise LLMError(f"Anthropic API error: {str(e)}", {"provider": "anthropic", "model": self.config.model})
     
     def stream(self, messages: List[Message]) -> Generator[str, None, None]:
         system, anthropic_messages = self._convert_messages(messages)

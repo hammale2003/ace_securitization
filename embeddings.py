@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 
+from utils import logger
+
 
 @dataclass
 class EmbeddingConfig:
@@ -177,7 +179,7 @@ def create_embedding_model(config: EmbeddingConfig) -> EmbeddingModel:
         return OpenAIEmbedding(model=config.openai_model, api_key=config.api_key)
     else:
         # Default to simple
-        print(f"Unknown embedding provider '{provider}', using simple embeddings")
+        logger.warning(f"Unknown embedding provider '{provider}', using simple embeddings")
         return SimpleEmbedding(dim=config.embedding_dim)
 
 
@@ -197,13 +199,21 @@ def cosine_similarity_matrix(query: np.ndarray, corpus: np.ndarray) -> np.ndarra
     
     Args:
         query: Shape (dim,) - single query vector
-        corpus: Shape (n, dim) - matrix of corpus vectors
+        corpus: Shape (n, dim) or (dim,) - matrix of corpus vectors or single vector
     
     Returns:
         Shape (n,) - similarity scores
     """
     if len(corpus) == 0:
         return np.array([])
+    
+    # Ensure corpus is 2D
+    if corpus.ndim == 1:
+        corpus = corpus.reshape(1, -1)
+    
+    # Ensure query is 1D
+    if query.ndim == 2:
+        query = query.flatten()
     
     # Normalize query
     query_norm = query / (np.linalg.norm(query) + 1e-8)

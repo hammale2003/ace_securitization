@@ -8,7 +8,7 @@ This system implements the ACE (Agentic Context Engineering) framework for build
 
 - **Three-Agent Architecture**: Generator, Reflector, and Curator work together to process questions and evolve knowledge
 - **Evolving Playbook**: Accumulates domain-specific knowledge over time
-- **Multiple Interfaces**: Streamlit web UI, FastAPI REST API, and CLI
+- **Multiple Interfaces**: Streamlit web UI and FastAPI REST API
 - **Multi-Provider Support**: Works with OpenAI, Anthropic Claude, and Google Gemini
 - **Streaming Support**: Real-time token streaming for responsive UX
 - **Incremental Updates**: Delta-based playbook updates prevent context collapse
@@ -136,25 +136,6 @@ curl -X POST http://localhost:8000/run \
 curl http://localhost:8000/playbook
 ```
 
-### Command Line Interface
-
-```bash
-# Ask a question
-python cli.py ask "What are the elements of a true sale?"
-
-# Generate only (no learning)
-python cli.py ask "Define SPV" --generate-only
-
-# View playbook
-python cli.py playbook show
-
-# Interactive mode
-python cli.py interactive
-
-# Train on a dataset
-python cli.py train training_data.json --epochs 3
-```
-
 ## Project Structure
 
 ```
@@ -167,7 +148,6 @@ ace_framwork/
 ├── agents.py            # Generator, Reflector, Curator agents
 ├── app.py               # Streamlit web interface
 ├── api.py               # FastAPI REST API
-├── cli.py               # Command line interface
 ├── utils.py             # Utility functions
 ├── tests.py             # Unit tests
 ├── requirements.txt     # Dependencies
@@ -264,10 +244,22 @@ To train the system on a dataset:
 ]
 ```
 
-2. Run training:
+2. Run training using the Python API:
 
-```bash
-python cli.py train training_data.json --epochs 3
+```python
+from ace_securitization import ACEPipeline
+import json
+
+pipeline = ACEPipeline()
+
+# Load training data
+with open('training_data.json', 'r') as f:
+    training_data = json.load(f)
+
+# Train on each question
+for item in training_data:
+    result = pipeline.run(item['question'])
+    print(f"Learned from: {item['question']}")
 ```
 
 The playbook will grow as the system learns from each question.

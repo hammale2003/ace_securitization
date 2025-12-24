@@ -6,11 +6,11 @@ React/Next.js frontend or other clients.
 """
 import json
 import asyncio
-from typing import Optional, Dict, Any, AsyncGenerator
+from typing import Optional, Dict, Any, AsyncGenerator, List
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -19,6 +19,11 @@ import uvicorn
 from config import ACEConfig, LLMConfig, PlaybookConfig
 from playbook import PlaybookManager, Playbook, deduplicate_playbook
 from agents import ACEPipeline
+from trainer import TrainerPipeline, TrainerConfig
+from trainer.granularity import GranularityLevel
+from errors import ConfigurationError, LLMError, PlaybookError, ValidationError as ACEValidationError, log_error
+from middleware import RateLimitMiddleware, ErrorHandlerMiddleware
+from utils import logger
 
 
 # =============================================================================
@@ -136,6 +141,7 @@ class AppState:
     
     def __init__(self):
         self.pipeline: Optional[ACEPipeline] = None
+        self.trainer_pipeline: Optional[TrainerPipeline] = None
         self.config: Optional[ACEConfig] = None
         self.initialized: bool = False
     
@@ -143,11 +149,21 @@ class AppState:
         """Initialize the ACE pipeline."""
         self.config = config
         self.pipeline = ACEPipeline(config)
+        
+        # Initialize trainer pipeline
+        trainer_config = TrainerConfig(llm_config=config.llm)
+        self.trainer_pipeline = TrainerPipeline(
+            config=trainer_config,
+            playbook_manager=self.pipeline.playbook_manager,
+            retriever=self.pipeline.retriever
+        )
+        
         self.initialized = True
     
     def reset(self):
         """Reset the application state."""
         self.pipeline = None
+        self.trainer_pipeline = None
         self.config = None
         self.initialized = False
 
@@ -162,9 +178,9 @@ app_state = AppState()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
-    print("ACE Securitization API starting up...")
+    logger.info("ACE Securitization API starting up...")
     yield
-    print("ACE Securitization API shutting down...")
+    logger.info("ACE Securitization API shutting down...")
     app_state.reset()
 
 
@@ -174,6 +190,12 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Error handling middleware (must be first)
+app.add_middleware(ErrorHandlerMiddleware)
+
+# Rate limiting middleware
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60, burst_size=10)
 
 # CORS middleware for frontend access
 app.add_middleware(
@@ -214,6 +236,14 @@ async def health_check():
 async def initialize_pipeline(request: InitializeRequest):
     """Initialize the ACE pipeline with configuration."""
     try:
+        # Validate provider
+        valid_providers = ["openai", "anthropic", "google", "mock"]
+        if request.llm_config.provider not in valid_providers:
+            raise ACEValidationError(
+                f"Invalid provider. Must be one of: {', '.join(valid_providers)}",
+                {"provider": request.llm_config.provider}
+            )
+        
         llm_config = LLMConfig(
             provider=request.llm_config.provider,
             model=request.llm_config.model,
@@ -231,6 +261,7 @@ async def initialize_pipeline(request: InitializeRequest):
         )
         
         app_state.initialize(ace_config)
+        logger.info("Pipeline initialized successfully", extra={"provider": llm_config.provider, "model": llm_config.model})
         
         return {
             "status": "initialized",
@@ -241,8 +272,15 @@ async def initialize_pipeline(request: InitializeRequest):
             }
         }
         
+    except (ACEValidationError, ConfigurationError) as e:
+        log_error(logger, e, {"endpoint": "/initialize"})
+        raise HTTPException(status_code=400, detail=e.message)
+    except ValueError as e:
+        log_error(logger, e, {"endpoint": "/initialize"})
+        raise HTTPException(status_code=400, detail="Invalid configuration")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        log_error(logger, e, {"endpoint": "/initialize"})
+        raise HTTPException(status_code=500, detail="Failed to initialize pipeline")
 
 
 @app.post("/generate", response_model=GeneratorResponse)
@@ -252,6 +290,10 @@ async def generate(request: GenerateRequest):
         raise HTTPException(status_code=400, detail="Pipeline not initialized")
     
     try:
+        # Validate input
+        if not request.question or not request.question.strip():
+            raise ACEValidationError("Question cannot be empty")
+        
         if request.stream:
             return StreamingResponse(
                 stream_generate(request),
@@ -274,6 +316,7 @@ async def generate(request: GenerateRequest):
             elif request.mode == "explore" and request.user_prompt:
                 kwargs["user_prompt"] = request.user_prompt
         
+        logger.info("Generating response", extra={"mode": request.mode, "output_format": request.output_format})
         output = app_state.pipeline.generate_only(request.question, **kwargs)
         
         return GeneratorResponse(
@@ -284,17 +327,21 @@ async def generate(request: GenerateRequest):
             reformulation_result=output.reformulation_result if hasattr(output, 'reformulation_result') else None
         )
         
+    except ACEValidationError as e:
+        log_error(logger, e, {"endpoint": "/generate"})
+        raise HTTPException(status_code=400, detail=e.message if hasattr(e, 'message') else str(e))
+    except LLMError as e:
+        log_error(logger, e, {"endpoint": "/generate"})
+        raise HTTPException(status_code=503, detail="LLM service unavailable")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        log_error(logger, e, {"endpoint": "/generate"})
+        raise HTTPException(status_code=500, detail="Failed to generate response")
 
 
 async def stream_generate(request: GenerateRequest) -> AsyncGenerator[str, None]:
     """Stream generator output using SSE."""
-    collected_response = ""
-    
     def stream_callback(chunk: str):
-        nonlocal collected_response
-        collected_response += chunk
+        pass  # Streaming handled by SSE
     
     loop = asyncio.get_event_loop()
     
@@ -333,6 +380,10 @@ async def run_pipeline(request: QuestionRequest):
         raise HTTPException(status_code=400, detail="Pipeline not initialized")
     
     try:
+        # Validate input
+        if not request.question or not request.question.strip():
+            raise ACEValidationError("Question cannot be empty")
+        
         if request.stream:
             return StreamingResponse(
                 stream_pipeline(request),
@@ -357,6 +408,7 @@ async def run_pipeline(request: QuestionRequest):
             elif request.mode == "explore" and request.user_prompt:
                 kwargs["user_prompt"] = request.user_prompt
         
+        logger.info("Running full pipeline", extra={"mode": request.mode, "output_format": request.output_format})
         result = app_state.pipeline.run(
             question=request.question,
             **kwargs
@@ -377,8 +429,15 @@ async def run_pipeline(request: QuestionRequest):
             timestamp=result.timestamp
         )
         
+    except ACEValidationError as e:
+        log_error(logger, e, {"endpoint": "/run"})
+        raise HTTPException(status_code=400, detail=e.message if hasattr(e, 'message') else str(e))
+    except (LLMError, PlaybookError) as e:
+        log_error(logger, e, {"endpoint": "/run"})
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        log_error(logger, e, {"endpoint": "/run"})
+        raise HTTPException(status_code=500, detail="Failed to process request")
 
 
 async def stream_pipeline(request: QuestionRequest) -> AsyncGenerator[str, None]:
@@ -522,6 +581,166 @@ async def get_bullet(bullet_id: str):
     
     return bullet.to_dict()
 
+
+# =============================================================================
+# TRAINER MODE ENDPOINTS
+# =============================================================================
+
+class TrainerEnrichRequest(BaseModel):
+    """Request model for trainer enrichment."""
+    json_document: str  # Minified JSON document string
+    extraction_types: Optional[List[str]] = None
+    min_confidence: float = 0.5
+    granularity_level: str = "batch"  # operative_clause_by_clause, batch, or full_document
+    preview_only: bool = False
+
+
+@app.post("/trainer/enrich")
+async def trainer_enrich(request: TrainerEnrichRequest):
+    """
+    Enrich playbook from a securitization document.
+    
+    Accepts minified JSON documents (Master Framework Agreements, etc.)
+    and extracts knowledge to enrich the playbook.
+    """
+    if not app_state.initialized:
+        raise HTTPException(status_code=400, detail="Pipeline not initialized")
+    
+    if not app_state.trainer_pipeline:
+        raise HTTPException(status_code=500, detail="Trainer pipeline not initialized")
+    
+    try:
+        # Update config if provided
+        if request.extraction_types:
+            app_state.trainer_pipeline.config.extraction_types = request.extraction_types
+        app_state.trainer_pipeline.config.min_extraction_confidence = request.min_confidence
+        
+        # Set granularity level
+        try:
+            app_state.trainer_pipeline.config.granularity_level = GranularityLevel(request.granularity_level)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid granularity_level. Must be one of: operative_clause_by_clause, batch, full_document"
+            )
+        
+        # Parse document first
+        document = app_state.trainer_pipeline.document_parser.parse_json_string(
+            request.json_document
+        )
+        
+        # Preview mode
+        if request.preview_only:
+            preview = app_state.trainer_pipeline.get_extraction_preview(document)
+            return {
+                "mode": "preview",
+                "preview": preview
+            }
+        
+        # Full enrichment
+        result = app_state.trainer_pipeline.run_from_document(document)
+        
+        return {
+            "mode": "enrich",
+            "result": result.to_dict(),
+            "summary": result.get_summary()
+        }
+    
+    except json.JSONDecodeError as e:
+        log_error(logger, e, {"endpoint": "/trainer/enrich"})
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+    except PlaybookError as e:
+        log_error(logger, e, {"endpoint": "/trainer/enrich"})
+        raise HTTPException(status_code=400, detail=e.message)
+    except Exception as e:
+        log_error(logger, e, {"endpoint": "/trainer/enrich"})
+        raise HTTPException(status_code=500, detail="Enrichment failed")
+
+
+@app.post("/trainer/parse")
+async def trainer_parse_document(request: TrainerEnrichRequest):
+    """
+    Parse a document and return its structure (no enrichment).
+    
+    Useful for previewing document structure before enrichment.
+    """
+    if not app_state.initialized:
+        raise HTTPException(status_code=400, detail="Pipeline not initialized")
+    
+    if not app_state.trainer_pipeline:
+        raise HTTPException(status_code=500, detail="Trainer pipeline not initialized")
+    
+    try:
+        # Parse document
+        document = app_state.trainer_pipeline.document_parser.parse_json_string(
+            request.json_document
+        )
+        
+        # Get hierarchy
+        hierarchy = app_state.trainer_pipeline.document_parser.get_clause_hierarchy(document)
+        
+        return {
+            "document_uid": document.document_uid,
+            "document_type": document.document_type,
+            "title": document.title,
+            "total_clauses": len(document.get_all_clauses_flat()),
+            "metadata": document.metadata,
+            "hierarchy": hierarchy
+        }
+    
+    except json.JSONDecodeError as e:
+        log_error(logger, e, {"endpoint": "/trainer/parse"})
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+    except Exception as e:
+        log_error(logger, e, {"endpoint": "/trainer/parse"})
+        raise HTTPException(status_code=500, detail="Parsing failed")
+
+
+@app.get("/trainer/stats")
+async def get_trainer_stats():
+    """Get statistics about trainer mode usage."""
+    if not app_state.initialized:
+        raise HTTPException(status_code=400, detail="Pipeline not initialized")
+    
+    playbook = app_state.pipeline.get_playbook()
+    stats = playbook.get_stats()
+    
+    return {
+        "total_bullets": stats.get("total_bullets", 0),
+        "sections": stats.get("sections", {}),
+        "archived_count": stats.get("archived_count", 0)
+    }
+
+
+@app.get("/trainer/granularity-levels")
+async def get_granularity_levels():
+    """Get available granularity levels with descriptions."""
+    return {
+        "levels": [
+            {
+                "value": GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE.value,
+                "name": "Operative Clause-by-Clause",
+                "description": GranularityLevel.get_description(GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE),
+                "cost": GranularityLevel.get_cost_indicator(GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE),
+                "accuracy": GranularityLevel.get_accuracy_indicator(GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE)
+            },
+            {
+                "value": GranularityLevel.BATCH.value,
+                "name": "Batch Processing",
+                "description": GranularityLevel.get_description(GranularityLevel.BATCH),
+                "cost": GranularityLevel.get_cost_indicator(GranularityLevel.BATCH),
+                "accuracy": GranularityLevel.get_accuracy_indicator(GranularityLevel.BATCH)
+            },
+            {
+                "value": GranularityLevel.FULL_DOCUMENT.value,
+                "name": "Full Document",
+                "description": GranularityLevel.get_description(GranularityLevel.FULL_DOCUMENT),
+                "cost": GranularityLevel.get_cost_indicator(GranularityLevel.FULL_DOCUMENT),
+                "accuracy": GranularityLevel.get_accuracy_indicator(GranularityLevel.FULL_DOCUMENT)
+            }
+        ],
+        "default": GranularityLevel.BATCH.value
+    }
 
 # =============================================================================
 # RUN SERVER

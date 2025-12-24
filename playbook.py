@@ -7,7 +7,6 @@ Each bullet has metadata (id, helpful/harmful counts) and content.
 Supports operations: ADD, REMOVE, MODIFY, MERGE
 """
 import json
-import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
@@ -15,6 +14,7 @@ from datetime import datetime
 import threading
 
 from config import PLAYBOOK_SECTIONS, SECTION_PREFIXES, PlaybookConfig
+from utils import logger
 
 
 @dataclass
@@ -475,7 +475,7 @@ class PlaybookManager:
                         data = json.load(f)
                     self._playbook = Playbook.from_dict(data)
                 except (json.JSONDecodeError, KeyError) as e:
-                    print(f"Warning: Could not load playbook, creating new one: {e}")
+                    logger.warning(f"Could not load playbook, creating new one: {e}")
                     self._playbook = Playbook()
             else:
                 self._playbook = Playbook()

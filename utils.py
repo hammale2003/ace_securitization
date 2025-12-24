@@ -3,9 +3,9 @@ Utility functions for the ACE Securitization System.
 
 Includes logging, text processing, and helper functions.
 """
-import os
 import json
 import logging
+import logging.handlers
 import hashlib
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -21,31 +21,41 @@ import time
 def setup_logging(
     log_level: str = "INFO",
     log_file: Optional[str] = None,
-    log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    log_format: str = "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
+    max_bytes: int = 10 * 1024 * 1024,  # 10MB
+    backup_count: int = 5
 ) -> logging.Logger:
     """
-    Set up logging for the ACE system.
+    Set up structured logging for the ACE system with rotation.
     
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_file: Optional file path for logging
         log_format: Log message format
+        max_bytes: Maximum log file size before rotation
+        backup_count: Number of backup files to keep
     
     Returns:
         Configured logger instance
     """
     logger = logging.getLogger("ace_securitization")
     logger.setLevel(getattr(logging, log_level.upper()))
+    logger.handlers.clear()  # Prevent duplicate handlers
     
-    # Console handler
+    # Console handler with structured format
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(log_format))
     logger.addHandler(console_handler)
     
-    # File handler (optional)
+    # File handler with rotation (optional)
     if log_file:
         Path(log_file).parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding='utf-8'
+        )
         file_handler.setFormatter(logging.Formatter(log_format))
         logger.addHandler(file_handler)
     
