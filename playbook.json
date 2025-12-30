@@ -1511,20 +1511,6 @@
       "merged_from": null
     },
     {
-      "id": "def-00011",
-      "content": "ABS Transaction: A specific type of securitization involving the issuance and sale of securities to the public markets. This is often the 'exit strategy' for assets warehoused in a private securitization facility governed by an MFA.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-21T12:05:54.388426",
-      "updated_at": "2025-12-21T12:05:54.388426",
-      "revision_count": 0,
-      "archived": false,
-      "archived_at": null,
-      "archive_reason": null,
-      "merged_from": null
-    },
-    {
       "id": "def-00012",
       "content": "Acceding Swap Provider Minimum Rating: A minimum credit rating requirement for any new or replacement interest rate or currency swap provider. This is a critical risk mitigant to protect the transaction from the credit risk of its derivative counterparties.",
       "helpful_count": 0,
@@ -1784,20 +1770,6 @@
       "neutral_count": 0,
       "created_at": "2025-12-22T11:21:52.468471",
       "updated_at": "2025-12-22T11:21:52.468471",
-      "revision_count": 0,
-      "archived": false,
-      "archived_at": null,
-      "archive_reason": null,
-      "merged_from": null
-    },
-    {
-      "id": "def-00031",
-      "content": "ABS Transaction Fee: A fee payable to the Senior Lenders or Arrangers triggered by the voluntary cancellation or prepayment of the facility in connection with a public ABS Transaction (take-out). The specific quantum and mechanics are cross-referenced to the Senior Facility Agreement.",
-      "helpful_count": 0,
-      "harmful_count": 0,
-      "neutral_count": 0,
-      "created_at": "2025-12-22T11:21:53.129697",
-      "updated_at": "2025-12-22T11:21:53.129697",
       "revision_count": 0,
       "archived": false,
       "archived_at": null,
@@ -2083,9 +2055,64 @@
       "archived_at": null,
       "archive_reason": null,
       "merged_from": null
+    },
+    {
+      "id": "def-00052",
+      "content": "Principles of Construction: means the set of interpretative rules and conventions defined in the agreement to guide the reading and legal effect of the contract terms, typically covering aspects such as statutory references, time, gender, and the inclusion of successors and assigns.",
+      "helpful_count": 0,
+      "harmful_count": 0,
+      "neutral_count": 0,
+      "created_at": "2025-12-29T17:55:48.508541",
+      "updated_at": "2025-12-29T17:55:48.508541",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
+    },
+    {
+      "id": "def-00053",
+      "content": "“ABS Transaction” means any securitisation of any Receivables originated by the Seller, which involves the marketing and distribution of securities in the public markets.",
+      "helpful_count": 0,
+      "harmful_count": 0,
+      "neutral_count": 0,
+      "created_at": "2025-12-29T17:55:48.509540",
+      "updated_at": "2025-12-29T17:55:48.509540",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
+    },
+    {
+      "id": "def-00054",
+      "content": "ABS Transaction Fee: means the fee payable to the lenders upon the voluntary cancellation or prepayment of the facility in connection with an ABS Transaction, typically calculated as a percentage of the amount prepaid or cancelled to compensate lenders for the early exit or refinancing.",
+      "helpful_count": 0,
+      "harmful_count": 0,
+      "neutral_count": 0,
+      "created_at": "2025-12-29T17:55:48.509540",
+      "updated_at": "2025-12-29T17:55:48.509540",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
+    },
+    {
+      "id": "def-00055",
+      "content": "Capitalised terms: A rule of contract interpretation specifying that any word or phrase starting with a capital letter within the agreement has a specific, defined meaning. These definitions are typically consolidated in a dedicated section (in this case, Clause 2) to ensure consistency and avoid ambiguity in the interpretation of the contract's provisions.",
+      "helpful_count": 0,
+      "harmful_count": 0,
+      "neutral_count": 0,
+      "created_at": "2025-12-29T22:54:37.971187",
+      "updated_at": "2025-12-29T22:54:37.971187",
+      "revision_count": 0,
+      "archived": false,
+      "archived_at": null,
+      "archive_reason": null,
+      "merged_from": null
     }
   ],
-  "code_snippets": [],
   "archived_bullets": [
     {
       "id": "pit-00003",
@@ -2189,8 +2216,8 @@
   "metadata": {
     "version": "1.2",
     "created_at": "2025-12-15T13:26:38.367103",
-    "updated_at": "2025-12-22T11:22:03.105446",
-    "total_updates": 131,
+    "updated_at": "2025-12-29T22:54:37.971187",
+    "total_updates": 147,
     "total_removes": 8,
     "total_modifies": 37,
     "total_merges": 3

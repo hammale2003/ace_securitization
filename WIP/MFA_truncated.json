@@ -1,0 +1,814 @@
+{
+  "document": {
+    "content_text": "Dated:\n\n\n\n\n[●]\n(as “Issuer”)\n[●]\n(as “Servicer”, “Seller”, “Collections Account Trustee” and “Subordinated Lender”)\n[●]\n(as “Mezzanine Note Purchaser”)\n[●]\r\n(as “Mezzanine Funding Agent”)\n[●]\n(as “Original Senior Lender”)\n[●]\n(as “Swap Provider”)\nSECURITY TRUSTEE\r\n(as “Security Trustee”)\nSECURITY TRUSTEE\n(as “Cash Manager”, “Registrar” and “Facility Agent”)\nand\nCORPORATE SERVICES PROVIDER\n(as “Corporate Services Provider”)\n\n\n\n[●]\n(as “Issuer”)\n[●]\n(as “Servicer”, “Seller”, “Collections Account Trustee” and “Subordinated Lender”)\n[●]\n(as “Mezzanine Note Purchaser”)\n[●]\r\n(as “Mezzanine Funding Agent”)\n[●]\n(as “Original Senior Lender”)\n[●]\n(as “Swap Provider”)\nSECURITY TRUSTEE\r\n(as “Security Trustee”)\nSECURITY TRUSTEE\n(as “Cash Manager”, “Registrar” and “Facility Agent”)\nand\nCORPORATE SERVICES PROVIDER\n(as “Corporate Services Provider”)\nMaster Definitions Agreement\n\n[[slot:toc_heading]]\n[[slot:toc]]\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nTHIS AGREEMENT is made as a deed and delivered on .\nBetween:\n\n[●], a private company with limited liability incorporated in England and Wales (registered number [●]) whose registered office is at c/o Corporate Services Provider, [●] (in its capacity as “Issuer”);\n[●], a private company with limited liability incorporated in England and Wales (registered number [●]) with registered office at [●] (“[●]”, in its capacities as “Servicer”, “Seller”, “Collections Account Trustee” and “Subordinated Lender”);\n[●], with its registered address at [●] (in its capacity as “Mezzanine Note Purchaser”);\n[●], with its registered address at [●] (in its capacity as “Mezzanine Funding Agent”);\n[●], organised under the laws of the United States of America with limited liability, with its main office at [●] (“Original Senior Lender”);\n[●], a European public company (Societas Europaea) established under the Council Regulation (EC) No [●] of [●] on the Statute for a European company (SE), with registered address at [●] (in its capacity as “Swap Provider”);\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] as security trustee for the Secured Creditors (the “Security Trustee”);\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] (in its capacities as “Facility Agent”, “Registrar” and “Cash Manager”); and\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] as corporate services provider (in its capacity as “Corporate Services Provider”).\n\n[●], a private company with limited liability incorporated in England and Wales (registered number [●]) whose registered office is at c/o Corporate Services Provider, [●] (in its capacity as “Issuer”);\n[●], a private company with limited liability incorporated in England and Wales (registered number [●]) with registered office at [●] (“[●]”, in its capacities as “Servicer”, “Seller”, “Collections Account Trustee” and “Subordinated Lender”);\n[●], with its registered address at [●] (in its capacity as “Mezzanine Note Purchaser”);\n[●], with its registered address at [●] (in its capacity as “Mezzanine Funding Agent”);\n[●], organised under the laws of the United States of America with limited liability, with its main office at [●] (“Original Senior Lender”);\n[●], a European public company (Societas Europaea) established under the Council Regulation (EC) No [●] of [●] on the Statute for a European company (SE), with registered address at [●] (in its capacity as “Swap Provider”);\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] as security trustee for the Secured Creditors (the “Security Trustee”);\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] (in its capacities as “Facility Agent”, “Registrar” and “Cash Manager”); and\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] as corporate services provider (in its capacity as “Corporate Services Provider”).\n[[slot:parties]]\n[[slot:toc]]\n[[slot:main_clauses]]",
+    "clauses": [
+      {
+        "uid": "CLAUSE_UID-0",
+        "document_uid": "DOC_UID-0",
+        "level": 0,
+        "position": 0,
+        "parent_slot_name": "main_clauses",
+        "title_text": "BACKGROUND",
+        "body_text": "[[slot:sub_clauses]]",
+        "metadata": {
+          "type": "structural_clause"
+        },
+        "clauses": [
+          {
+            "uid": "CLAUSE_UID-0.1",
+            "document_uid": "DOC_UID-0",
+            "parent_uid": "CLAUSE_UID-0",
+            "level": 1,
+            "position": 1,
+            "parent_slot_name": "sub_clauses",
+            "title_text": "",
+            "body_text": "The Seller wishes to sell, and the Issuer wishes to purchase, Receivables arising out of Borrower Agreements, on the terms and subject to the conditions set out in the Receivables Purchase Agreement; and the Issuer shall fund its purchase of Receivables by applying the proceeds of advances made under a revolving loan facility in accordance with the terms of the Senior Facility Agreement, the proceeds of variable loan notes issued in accordance with the Mezzanine Facility Agreement, the proceeds of advances made under a revolving loan facility under the Subordinated Facility Agreement and Collections received by the Issuer in respect of Purchased Receivables.",
+            "metadata": {
+              "type": "operative_clause"
+            },
+            "clauses": []
+          },
+          {
+            "uid": "CLAUSE_UID-0.2",
+            "document_uid": "DOC_UID-0",
+            "parent_uid": "CLAUSE_UID-0",
+            "level": 1,
+            "position": 2,
+            "parent_slot_name": "sub_clauses",
+            "title_text": "",
+            "body_text": "In connection with the transactions outlined above, each of the parties to this Agreement shall enter into the applicable Transaction Documents to which it is a party on or about the Signing Date or, if later, on the Accession Date on which it accedes to the Transaction Documents and is entering into, or acceding to, as applicable, this Agreement to record its agreement regarding, among other things, the incorporation of (a) the definitions and the provisions for the interpretation of certain words and expressions contained in Clause 1 (Interpretation) and Clause 2 (Definitions) and, (b) the Common Terms, into the Transaction Documents.",
+            "metadata": {
+              "type": "operative_clause"
+            },
+            "clauses": []
+          }
+        ]
+      },
+      {
+        "uid": "CLAUSE_UID-1",
+        "document_uid": "DOC_UID-0",
+        "level": 0,
+        "position": 1,
+        "parent_slot_name": "main_clauses",
+        "title_text": "Interpretation",
+        "body_text": "[[slot:sub_clauses]]",
+        "metadata": {
+          "type": "structural_clause"
+        },
+        "clauses": [
+          {
+            "uid": "CLAUSE_UID-1.1",
+            "document_uid": "DOC_UID-0",
+            "parent_uid": "CLAUSE_UID-1",
+            "level": 1,
+            "position": 1,
+            "parent_slot_name": "sub_clauses",
+            "title_text": "",
+            "body_text": "Capitalised terms in this Agreement shall have the meanings given to them in Clause 2‎ (Definitions) (as it may be amended, varied or supplemented from time to time with the consent of the parties to this Agreement) and this Agreement shall be construed in accordance with the principles of construction set out in Clauses 2.2 to 2.12 (the “Principles of Construction”).",
+            "metadata": {
+              "type": "operative_clause"
+            },
+            "clauses": []
+          },
+          {
+            "uid": "CLAUSE_UID-1.2",
+            "document_uid": "DOC_UID-0",
+            "parent_uid": "CLAUSE_UID-1",
+            "level": 1,
+            "position": 2,
+            "parent_slot_name": "sub_clauses",
+            "title_text": "",
+            "body_text": "In any agreement, instrument or deed expressly incorporating by reference this Master Framework Agreement, the Principles of Construction shall apply to the construction of that agreement, instrument or deed.",
+            "metadata": {
+              "type": "operative_clause"
+            },
+            "clauses": []
+          },
+          {
+            "uid": "CLAUSE_UID-1.3",
+            "document_uid": "DOC_UID-0",
+            "parent_uid": "CLAUSE_UID-1",
+            "level": 1,
+            "position": 3,
+            "parent_slot_name": "sub_clauses",
+            "title_text": "",
+            "body_text": "Other than as expressly provided for in this Agreement, where any party to this Agreement from time to time acts in more than one capacity under a Transaction Document, the provisions of this Agreement shall apply to it as though it were a separate party in each such capacity except insofar as they require it in one capacity to give any notice or information to itself in another capacity.",
+            "metadata": {
+              "type": "operative_clause"
+            },
+            "clauses": []
+          }
+        ]
+      },
+      {
+        "uid": "CLAUSE_UID-2",
+        "document_uid": "DOC_UID-0",
+        "level": 0,
+        "position": 2,
+        "parent_slot_name": "main_clauses",
+        "title_text": "Definitions and Principles of Construction",
+        "body_text": "[[slot:sub_clauses]]",
+        "metadata": {
+          "type": "structural_clause"
+        },
+        "clauses": [
+          {
+            "uid": "CLAUSE_UID-2.1",
+            "document_uid": "DOC_UID-0",
+            "parent_uid": "CLAUSE_UID-2",
+            "level": 1,
+            "position": 1,
+            "parent_slot_name": "sub_clauses",
+            "title_text": "",
+            "body_text": "In any agreement, instrument or deed expressly incorporating by reference the terms of this Master Framework Agreement the following expressions shall, except where the context otherwise requires or where otherwise defined in that agreement, instrument or deed, have the following meanings:\n[[slot:sub_clauses]]",
+            "metadata": {
+              "type": "structural_clause"
+            },
+            "clauses": [
+              {
+                "uid": "CLAUSE_UID-2.1.1",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 1,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“ABS Transaction” means any securitisation of any Receivables originated by the Seller, which involves the marketing and distribution of securities in the public markets.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "ABS Transaction"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.2",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 2,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“ABS Transaction Fee” has the meaning given to it in clause 8.2(b) (Voluntary Cancellation and Prepayment for the purposes of an ABS Transaction and Exit Fees) of the Senior Facility Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "ABS Transaction Fee"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.3",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 3,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Acceding Swap Provider Minimum Rating” means, in relation to a new or successor Swap Provider that is not an affiliate of Swap Provider, a rating for its long-term unsecured and non-credit-enhanced debt obligations of A or higher by S&P or Fitch or A2 or higher by Moody’s.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Acceding Swap Provider Minimum Rating"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.4",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 4,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Acceptance” has the meaning given to it in clause 2.4 (Acceptance of Offer to sell Receivables) of the Receivables Purchase Agreement",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Acceptance"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.5",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 5,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Accession Date” means, in respect of any party, the date on which it accedes to:\n[[slot:sub_clauses]]\n“Account Acceleration Notice” a notice in a form which is in all material respects the same as thmeansat set out in Exhibit A (Account Control Notice) of the Issuer Account Bank Agreement duly executed by the Cash Manager.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Accession Date"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": [
+                  {
+                    "uid": "CLAUSE_UID-2.1.5.1",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.5",
+                    "level": 3,
+                    "position": 1,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "if it is an acceding Senior Lender, the Senior Facility Agreement and the Master Framework Agreement, in accordance with clause 18 (Assignments and Transfers) of the Senior Facility Agreement;",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.5.2",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.5",
+                    "level": 3,
+                    "position": 2,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "if it is an acceding Mezzanine Note Purchaser or another member of a Mezzanine Note Purchaser Group, the Mezzanine Facility Agreement and the Master Framework Agreement, in accordance with clause 12 (Increase of the Mezzanine Commitments) or clause 13 (Assignments and Transfers) of the Mezzanine Facility Agreement; or",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.5.3",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.5",
+                    "level": 3,
+                    "position": 3,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "if is an acceding Swap Provider, in accordance with Clause 3.47 (Accession of a new or successor Swap Provider) of the Master Framework Agreement.",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  }
+                ]
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.6",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 6,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Account Bank” means any Issuer Account Bank or Collections Account Bank, as the context requires.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Account Bank"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.7",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 7,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Account Bank Downgrade” means, in respect of any Issuer Account Bank or Collections Account Bank, the point in time when it ceases to be an Account Bank Eligible Institution.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Account Bank Downgrade"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.8",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 8,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Account Bank Eligible Institution” means any Issuer Account Bank, Collections Account Bank or any proposed Issuer Account Bank or Collections Account Bank, as at any date of determination, that:\n[[slot:sub_clauses]]",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Account Bank Eligible Institution"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": [
+                  {
+                    "uid": "CLAUSE_UID-2.1.8.4",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.8",
+                    "level": 3,
+                    "position": 4,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "is and remains duly authorised in respect of its deposit taking activities under the laws of the jurisdiction in which it is operating; and",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.8.5",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.8",
+                    "level": 3,
+                    "position": 5,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "if it is not an Electronic Money Institution, maintains certain corporate ratings, which are short term unsecured, unguaranteed and unsubordinated debt obligations rated at least P-1 by Moody’s, A-l by S&P and F-1 by Fitch; or",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.8.6",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.8",
+                    "level": 3,
+                    "position": 6,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "if it is an Electronic Money Institution, is an Approved Electronic Money Institution.",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  }
+                ]
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.9",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 9,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Account Bank Event” means, in respect of an Issuer Account Bank or Collections Account Bank, any of:\n[[slot:sub_clauses]]",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Account Bank Event"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": [
+                  {
+                    "uid": "CLAUSE_UID-2.1.9.7",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.9",
+                    "level": 3,
+                    "position": 7,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "the occurrence of an Insolvency Event;",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.9.8",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.9",
+                    "level": 3,
+                    "position": 8,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "it being or becoming subject to Insolvency Proceedings;",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.9.9",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.9",
+                    "level": 3,
+                    "position": 9,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "to the extent such Issuer Account Bank or Collections Account Bank is an Electronic Money Institution, an “insolvency event” occurs with respect to it or it becomes subject to “insolvency proceedings”, each as defined in the Electronic Money Regulations 2011/99;",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.9.10",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.9",
+                    "level": 3,
+                    "position": 10,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "to the extent that such Issuer Account Bank or Collections Account Bank is an Electronic Money Institution as at the date on which it is appointed to act as an Account Bank for the purposes of this Transaction, on any subsequent date it is no longer registered or authorised as an Electronic Money Institution;",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.9.11",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.9",
+                    "level": 3,
+                    "position": 11,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "the occurrence of an Account Bank Downgrade; or",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.9.12",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.9",
+                    "level": 3,
+                    "position": 12,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "any event of default (or equivalent event) or breach by the Issuer Account Bank or Collections Account Bank, as the case may be, is continuing in respect of the relevant account bank under the Issuer Account Bank Agreement or any Acknowledgment of Collections Account Declaration of Trust executed by the account bank.",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  }
+                ]
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.10",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 10,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Account Mandate” means any account mandate (including any account terms and conditions) in relation to the Issuer Accounts or the Collections Account.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Account Mandate"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.11",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 11,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Accounting Principles” means generally accepted accounting principles in England and Wales and/or the international financial reporting standards (IFRS) within the meaning of Regulation 1606/2002/EC (or as otherwise adopted or amended from time to time) or other generally accepted accounting principles, as applied by each relevant entity within the Seller Group for the purpose of its financial statements.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Accounting Principles"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.12",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 12,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Accounting Reference Date” means, in each year the date represented and warranted by the Issuer in paragraph 12 (Accounting Reference Date) of Part A (Corporate Representations and Warranties) of Schedule 8 (Issuer Representations, Warranties and Undertakings) to the Master Framework Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Accounting Reference Date"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.13",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 13,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Acknowledgment of Collections Account Declaration of Trust” means an acknowledgment of the creation of a trust over a Collections Account substantially in the form set out in a Collections Account Declaration of Trust.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Acknowledgment of Collections Account Declaration of Trust"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.14",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 14,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Adjusted Loan Terms” means, in respect of any Receivable and its related Consumer Loan, that it has been originated in circumstances in which the Borrower had originally specified an amount of borrowing and term of the loan at the time the Borrower applied for the Consumer Loan and the Seller subsequently offered to that Borrower an option to adjust the loan terms by increasing or decreasing the amount of borrowing and/or the term of the proposed Consumer Loan and the Borrower consequently adjusted the terms of their initial application.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Adjusted Loan Terms"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.15",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 15,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Adjusted Loan Terms Prime Borrowers Concentration Percentage” has the meaning given to it in Schedule 3 (Concentration Limits) to the Master Framework Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Adjusted Loan Terms Prime Borrowers Concentration Percentage"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.16",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 16,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Adjusted Loan Terms Prime Borrowers Excess Concentration Amount” has the meaning given to it in Schedule 3 (Concentration Limits) to the Master Framework Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Adjusted Loan Terms Prime Borrowers Excess Concentration Amount"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.17",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 17,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Adjusted Loan Terms Near Prime Borrowers Concentration Percentage” has the meaning given to it in Schedule 3 (Concentration Limits) to the Master Framework Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Adjusted Loan Terms Near Prime Borrowers Concentration Percentage"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.18",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 18,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Adjusted Loan Terms Near Prime Borrowers Excess Concentration Amount” has the meaning given to it in Schedule 3 (Concentration Limits) to the Master Framework Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Adjusted Loan Terms Near Prime Borrowers Excess Concentration Amount"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.19",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 19,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Affected Person” means the Facility Agent, the Security Trustee, any Senior Lender, any Mezzanine Note Purchaser, any Mezzanine Funding Agent and any Swap Provider.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Affected Person"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.20",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 20,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Affected Person Tax Credit” has the meaning given to it in Clause 10.6 (Tax Credits) of the Master Framework Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Affected Person Tax Credit"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.21",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 21,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Affiliate” or “affiliate” means, in respect of any Person, any other Person that, directly or indirectly, is in control of, is controlled by or is under common control with, that Person or is a director or officer of that Person.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Affiliate",
+                    "affiliate"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.22",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 22,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“After Tax Basis” has the meaning described in Clause 10.8 (After Tax Amount) of the Master Framework Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "After Tax Basis"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.23",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 23,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Agency Fee Letter” means the fee letter dated on or about the Signing Date between the Issuer, the Facility Agent and the Security Trustee.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Agency Fee Letter"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.24",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 24,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Agreed Ad Hoc Funding Amount” means, as at any Cut-Off Date, any Subordinated Advances made by the Subordinated Lender to fund specified ad hoc costs payable by the Issuer in accordance with the Transaction Documents which are pre-approved in writing by the Facility Agent (such approval not to be unreasonably withheld or delayed (including, but not limited to, situations where withholding consent would result in not being able to prevent the occurrence of, or allow the remediation of, an Early Amortisation Event or an Event of Default)) or any other costs and expenses (but not principal repayment amounts or redemption amounts on the Senior Facility or Mezzanine Notes) specified in clauses 3.1 (d), (e) or (h) (Purpose) of the Subordinated Facility Agreement.",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Agreed Ad Hoc Funding Amount"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": []
+              },
+              {
+                "uid": "CLAUSE_UID-2.1.25",
+                "document_uid": "DOC_UID-0",
+                "parent_uid": "CLAUSE_UID-2.1",
+                "level": 2,
+                "position": 25,
+                "parent_slot_name": "sub_clauses",
+                "title_text": "",
+                "body_text": "“Agreed Adjusted Ad Hoc Funding Amount” means, as at any Cut-Off Date, an amount equal to the higher of:\n[[slot:sub_clauses]]",
+                "metadata": {
+                  "type": "definition_clause",
+                  "terms": [
+                    "Agreed Adjusted Ad Hoc Funding Amount"
+                  ],
+                  "is_numbered_definition": false
+                },
+                "clauses": [
+                  {
+                    "uid": "CLAUSE_UID-2.1.25.13",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.25",
+                    "level": 3,
+                    "position": 13,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "zero; and",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": []
+                  },
+                  {
+                    "uid": "CLAUSE_UID-2.1.25.14",
+                    "document_uid": "DOC_UID-0",
+                    "parent_uid": "CLAUSE_UID-2.1.25",
+                    "level": 3,
+                    "position": 14,
+                    "parent_slot_name": "sub_clauses",
+                    "title_text": "",
+                    "body_text": "an amount equal to:\n[[slot:sub_clauses]]",
+                    "metadata": {
+                      "type": "subsidiary_clause"
+                    },
+                    "clauses": [
+                      {
+                        "uid": "CLAUSE_UID-2.1.25.14.1",
+                        "document_uid": "DOC_UID-0",
+                        "parent_uid": "CLAUSE_UID-2.1.25.14",
+                        "level": 4,
+                        "position": 1,
+                        "parent_slot_name": "sub_clauses",
+                        "title_text": "",
+                        "body_text": "the aggregate Agreed Ad Hoc Funding Amounts incurred from and including the Closing Date up to and including that Cut-Off Date; and",
+                        "metadata": {
+                          "type": "subsidiary_clause"
+                        },
+                        "clauses": []
+                      },
+                      {
+                        "uid": "CLAUSE_UID-2.1.25.14.2",
+                        "document_uid": "DOC_UID-0",
+                        "parent_uid": "CLAUSE_UID-2.1.25.14",
+                        "level": 4,
+                        "position": 2,
+                        "parent_slot_name": "sub_clauses",
+                        "title_text": "",
+                        "body_text": "the aggregate of the amounts calculated under paragraph (ii)(A)(2)(cc) of the definition of Subordinated Redemption Amount, from and including the Closing Date up to and including that Cut-Off Date.",
+                        "metadata": {
+                          "type": "subsidiary_clause"
+                        },
+                        "clauses": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

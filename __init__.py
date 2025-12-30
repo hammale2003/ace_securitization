@@ -32,6 +32,14 @@ from agents import (
     ACEPipelineResult
 )
 from llm_client import LLMClient, create_client
+from playbook_enricher import (
+    EnrichmentPipeline,
+    EnrichmentConfig,
+    EnrichmentResult,
+    DocumentParser,
+    ParsedDocument,
+    GranularityLevel
+)
 
 __all__ = [
     # Configuration
@@ -59,4 +67,12 @@ __all__ = [
     # LLM Client
     "LLMClient",
     "create_client",
+    
+    # Enrichment
+    "EnrichmentPipeline",
+    "EnrichmentConfig",
+    "EnrichmentResult",
+    "DocumentParser",
+    "ParsedDocument",
+    "GranularityLevel",
 ]

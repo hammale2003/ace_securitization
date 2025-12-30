@@ -101,8 +101,7 @@ PLAYBOOK_SECTIONS = [
     "strategies",
     "pitfalls", 
     "templates",
-    "definitions",
-    "code_snippets"
+    "definitions"
 ]
 
 # Section prefixes for bullet IDs
@@ -110,8 +109,7 @@ SECTION_PREFIXES = {
     "strategies": "str",
     "pitfalls": "pit",
     "templates": "tmp",
-    "definitions": "def",
-    "code_snippets": "code"
+    "definitions": "def"
 }
 
 # Supported operations

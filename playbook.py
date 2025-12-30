@@ -102,14 +102,14 @@ class Playbook:
     """
     The evolving playbook containing accumulated domain knowledge.
     
-    Structured into sections: strategies, pitfalls, templates, definitions, code_snippets
+    Structured into sections: strategies, pitfalls, templates, definitions
     Also maintains an archive of removed/merged bullets.
     """
     strategies: List[Bullet] = field(default_factory=list)
     pitfalls: List[Bullet] = field(default_factory=list)
     templates: List[Bullet] = field(default_factory=list)
     definitions: List[Bullet] = field(default_factory=list)
-    code_snippets: List[Bullet] = field(default_factory=list)
+
     archived_bullets: List[Bullet] = field(default_factory=list)  # Archive for removed bullets
     metadata: Dict[str, Any] = field(default_factory=dict)
     
@@ -420,7 +420,7 @@ class Playbook:
             "pitfalls": [b.to_dict() for b in self.pitfalls],
             "templates": [b.to_dict() for b in self.templates],
             "definitions": [b.to_dict() for b in self.definitions],
-            "code_snippets": [b.to_dict() for b in self.code_snippets],
+
             "archived_bullets": [b.to_dict() for b in self.archived_bullets],
             "metadata": self.metadata
         }

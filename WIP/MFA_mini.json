@@ -1,0 +1,170 @@
+{
+    "document": {
+      "content_text": "Dated:\n\n\n\n\n[●]\n(as “Issuer”)\n[●]\n(as “Servicer”, “Seller”, “Collections Account Trustee” and “Subordinated Lender”)\n[●]\n(as “Mezzanine Note Purchaser”)\n[●]\r\n(as “Mezzanine Funding Agent”)\n[●]\n(as “Original Senior Lender”)\n[●]\n(as “Swap Provider”)\nSECURITY TRUSTEE\r\n(as “Security Trustee”)\nSECURITY TRUSTEE\n(as “Cash Manager”, “Registrar” and “Facility Agent”)\nand\nCORPORATE SERVICES PROVIDER\n(as “Corporate Services Provider”)\n\n\n\n[●]\n(as “Issuer”)\n[●]\n(as “Servicer”, “Seller”, “Collections Account Trustee” and “Subordinated Lender”)\n[●]\n(as “Mezzanine Note Purchaser”)\n[●]\r\n(as “Mezzanine Funding Agent”)\n[●]\n(as “Original Senior Lender”)\n[●]\n(as “Swap Provider”)\nSECURITY TRUSTEE\r\n(as “Security Trustee”)\nSECURITY TRUSTEE\n(as “Cash Manager”, “Registrar” and “Facility Agent”)\nand\nCORPORATE SERVICES PROVIDER\n(as “Corporate Services Provider”)\nMaster Definitions Agreement\n\n[[slot:toc_heading]]\n[[slot:toc]]\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nTHIS AGREEMENT is made as a deed and delivered on .\nBetween:\n\n[●], a private company with limited liability incorporated in England and Wales (registered number [●]) whose registered office is at c/o Corporate Services Provider, [●] (in its capacity as “Issuer”);\n[●], a private company with limited liability incorporated in England and Wales (registered number [●]) with registered office at [●] (“[●]”, in its capacities as “Servicer”, “Seller”, “Collections Account Trustee” and “Subordinated Lender”);\n[●], with its registered address at [●] (in its capacity as “Mezzanine Note Purchaser”);\n[●], with its registered address at [●] (in its capacity as “Mezzanine Funding Agent”);\n[●], organised under the laws of the United States of America with limited liability, with its main office at [●] (“Original Senior Lender”);\n[●], a European public company (Societas Europaea) established under the Council Regulation (EC) No [●] of [●] on the Statute for a European company (SE), with registered address at [●] (in its capacity as “Swap Provider”);\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] as security trustee for the Secured Creditors (the “Security Trustee”);\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] (in its capacities as “Facility Agent”, “Registrar” and “Cash Manager”); and\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] as corporate services provider (in its capacity as “Corporate Services Provider”).\n\n[●], a private company with limited liability incorporated in England and Wales (registered number [●]) whose registered office is at c/o Corporate Services Provider, [●] (in its capacity as “Issuer”);\n[●], a private company with limited liability incorporated in England and Wales (registered number [●]) with registered office at [●] (“[●]”, in its capacities as “Servicer”, “Seller”, “Collections Account Trustee” and “Subordinated Lender”);\n[●], with its registered address at [●] (in its capacity as “Mezzanine Note Purchaser”);\n[●], with its registered address at [●] (in its capacity as “Mezzanine Funding Agent”);\n[●], organised under the laws of the United States of America with limited liability, with its main office at [●] (“Original Senior Lender”);\n[●], a European public company (Societas Europaea) established under the Council Regulation (EC) No [●] of [●] on the Statute for a European company (SE), with registered address at [●] (in its capacity as “Swap Provider”);\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] as security trustee for the Secured Creditors (the “Security Trustee”);\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] (in its capacities as “Facility Agent”, “Registrar” and “Cash Manager”); and\n[●], a private limited liability company incorporated in England and Wales with company number [●] acting through its principal office at [●] as corporate services provider (in its capacity as “Corporate Services Provider”).\n[[slot:parties]]\n[[slot:toc]]\n[[slot:main_clauses]]",
+      "clauses": [
+        {
+          "uid": "CLAUSE_UID-0",
+          "document_uid": "DOC_UID-0",
+          "level": 0,
+          "position": 0,
+          "parent_slot_name": "main_clauses",
+          "title_text": "BACKGROUND",
+          "body_text": "[[slot:sub_clauses]]",
+          "metadata": {
+            "type": "structural_clause"
+          },
+          "clauses": [
+            {
+              "uid": "CLAUSE_UID-0.1",
+              "document_uid": "DOC_UID-0",
+              "parent_uid": "CLAUSE_UID-0",
+              "level": 1,
+              "position": 1,
+              "parent_slot_name": "sub_clauses",
+              "title_text": "",
+              "body_text": "The Seller wishes to sell, and the Issuer wishes to purchase, Receivables arising out of Borrower Agreements, on the terms and subject to the conditions set out in the Receivables Purchase Agreement; and the Issuer shall fund its purchase of Receivables by applying the proceeds of advances made under a revolving loan facility in accordance with the terms of the Senior Facility Agreement, the proceeds of variable loan notes issued in accordance with the Mezzanine Facility Agreement, the proceeds of advances made under a revolving loan facility under the Subordinated Facility Agreement and Collections received by the Issuer in respect of Purchased Receivables.",
+              "metadata": {
+                "type": "operative_clause"
+              },
+              "clauses": []
+            },
+            {
+              "uid": "CLAUSE_UID-0.2",
+              "document_uid": "DOC_UID-0",
+              "parent_uid": "CLAUSE_UID-0",
+              "level": 1,
+              "position": 2,
+              "parent_slot_name": "sub_clauses",
+              "title_text": "",
+              "body_text": "In connection with the transactions outlined above, each of the parties to this Agreement shall enter into the applicable Transaction Documents to which it is a party on or about the Signing Date or, if later, on the Accession Date on which it accedes to the Transaction Documents and is entering into, or acceding to, as applicable, this Agreement to record its agreement regarding, among other things, the incorporation of (a) the definitions and the provisions for the interpretation of certain words and expressions contained in Clause 1 (Interpretation) and Clause 2 (Definitions) and, (b) the Common Terms, into the Transaction Documents.",
+              "metadata": {
+                "type": "operative_clause"
+              },
+              "clauses": []
+            }
+          ]
+        },
+        {
+          "uid": "CLAUSE_UID-1",
+          "document_uid": "DOC_UID-0",
+          "level": 0,
+          "position": 1,
+          "parent_slot_name": "main_clauses",
+          "title_text": "Interpretation",
+          "body_text": "[[slot:sub_clauses]]",
+          "metadata": {
+            "type": "structural_clause"
+          },
+          "clauses": [
+            {
+              "uid": "CLAUSE_UID-1.1",
+              "document_uid": "DOC_UID-0",
+              "parent_uid": "CLAUSE_UID-1",
+              "level": 1,
+              "position": 1,
+              "parent_slot_name": "sub_clauses",
+              "title_text": "",
+              "body_text": "Capitalised terms in this Agreement shall have the meanings given to them in Clause 2‎ (Definitions) (as it may be amended, varied or supplemented from time to time with the consent of the parties to this Agreement) and this Agreement shall be construed in accordance with the principles of construction set out in Clauses 2.2 to 2.12 (the “Principles of Construction”).",
+              "metadata": {
+                "type": "operative_clause"
+              },
+              "clauses": []
+            },
+            {
+              "uid": "CLAUSE_UID-1.2",
+              "document_uid": "DOC_UID-0",
+              "parent_uid": "CLAUSE_UID-1",
+              "level": 1,
+              "position": 2,
+              "parent_slot_name": "sub_clauses",
+              "title_text": "",
+              "body_text": "In any agreement, instrument or deed expressly incorporating by reference this Master Framework Agreement, the Principles of Construction shall apply to the construction of that agreement, instrument or deed.",
+              "metadata": {
+                "type": "operative_clause"
+              },
+              "clauses": []
+            },
+            {
+              "uid": "CLAUSE_UID-1.3",
+              "document_uid": "DOC_UID-0",
+              "parent_uid": "CLAUSE_UID-1",
+              "level": 1,
+              "position": 3,
+              "parent_slot_name": "sub_clauses",
+              "title_text": "",
+              "body_text": "Other than as expressly provided for in this Agreement, where any party to this Agreement from time to time acts in more than one capacity under a Transaction Document, the provisions of this Agreement shall apply to it as though it were a separate party in each such capacity except insofar as they require it in one capacity to give any notice or information to itself in another capacity.",
+              "metadata": {
+                "type": "operative_clause"
+              },
+              "clauses": []
+            }
+          ]
+        },
+        {
+          "uid": "CLAUSE_UID-2",
+          "document_uid": "DOC_UID-0",
+          "level": 0,
+          "position": 2,
+          "parent_slot_name": "main_clauses",
+          "title_text": "Definitions and Principles of Construction",
+          "body_text": "[[slot:sub_clauses]]",
+          "metadata": {
+            "type": "structural_clause"
+          },
+          "clauses": [
+            {
+              "uid": "CLAUSE_UID-2.1",
+              "document_uid": "DOC_UID-0",
+              "parent_uid": "CLAUSE_UID-2",
+              "level": 1,
+              "position": 1,
+              "parent_slot_name": "sub_clauses",
+              "title_text": "",
+              "body_text": "In any agreement, instrument or deed expressly incorporating by reference the terms of this Master Framework Agreement the following expressions shall, except where the context otherwise requires or where otherwise defined in that agreement, instrument or deed, have the following meanings:\n[[slot:sub_clauses]]",
+              "metadata": {
+                "type": "structural_clause"
+              },
+              "clauses": [
+                {
+                  "uid": "CLAUSE_UID-2.1.1",
+                  "document_uid": "DOC_UID-0",
+                  "parent_uid": "CLAUSE_UID-2.1",
+                  "level": 2,
+                  "position": 1,
+                  "parent_slot_name": "sub_clauses",
+                  "title_text": "",
+                  "body_text": "“ABS Transaction” means any securitisation of any Receivables originated by the Seller, which involves the marketing and distribution of securities in the public markets.",
+                  "metadata": {
+                    "type": "definition_clause",
+                    "terms": [
+                      "ABS Transaction"
+                    ],
+                    "is_numbered_definition": false
+                  },
+                  "clauses": []
+                },
+                {
+                  "uid": "CLAUSE_UID-2.1.2",
+                  "document_uid": "DOC_UID-0",
+                  "parent_uid": "CLAUSE_UID-2.1",
+                  "level": 2,
+                  "position": 2,
+                  "parent_slot_name": "sub_clauses",
+                  "title_text": "",
+                  "body_text": "“ABS Transaction Fee” has the meaning given to it in clause 8.2(b) (Voluntary Cancellation and Prepayment for the purposes of an ABS Transaction and Exit Fees) of the Senior Facility Agreement.",
+                  "metadata": {
+                    "type": "definition_clause",
+                    "terms": [
+                      "ABS Transaction Fee"
+                    ],
+                    "is_numbered_definition": false
+                  },
+                  "clauses": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }

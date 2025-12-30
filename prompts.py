@@ -360,7 +360,7 @@ Available Operations:
 
 1. ADD: Create new bullet points
    - `type`: "ADD"
-   - `section`: which section to add to (strategies, pitfalls, templates, definitions, code_snippets)
+   - `section`: which section to add to (strategies, pitfalls, templates, definitions)
    - `content`: the new bullet text (be specific and actionable)
 
 2. REMOVE: Delete harmful or outdated bullets

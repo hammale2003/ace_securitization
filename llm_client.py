@@ -75,6 +75,8 @@ class LLMClient(ABC):
     
     def __init__(self, config: LLMConfig):
         self.config = config
+        self.call_count = 0
+        self.max_calls = getattr(config, 'max_calls', None)
     
     @abstractmethod
     def complete(self, messages: List[Message]) -> LLMResponse:
@@ -123,6 +125,7 @@ class OpenAIClient(LLMClient):
     
     def complete(self, messages: List[Message]) -> LLMResponse:
         try:
+            self.call_count += 1
             response = self.client.chat.completions.create(
                 model=self.config.model,
                 messages=self._convert_messages(messages),
@@ -194,6 +197,8 @@ class GoogleClient(LLMClient):
     
     def complete(self, messages: List[Message]) -> LLMResponse:
         try:
+            self.call_count += 1
+            logger.info(f"Appel Gemini avec le modèle: {self.config.model}")
             system_instruction, history = self._convert_messages(messages)
             
             # Create model with system instruction if provided
@@ -212,6 +217,7 @@ class GoogleClient(LLMClient):
             else:
                 response = model.generate_content(history[0]["parts"][0] if history else "")
             
+            logger.info(f"Réponse reçue de Gemini ({self.config.model})")
             logger.debug("Google API call completed", extra={"provider": "google", "model": self.config.model})
             
             return LLMResponse(
@@ -223,6 +229,7 @@ class GoogleClient(LLMClient):
             raise LLMError(f"Google API error: {str(e)}", {"provider": "google", "model": self.config.model})
     
     def stream(self, messages: List[Message]) -> Generator[str, None, None]:
+        logger.info(f"Streaming Gemini with model: {self.config.model}")
         system_instruction, history = self._convert_messages(messages)
         
         if system_instruction:
@@ -277,6 +284,7 @@ class AnthropicClient(LLMClient):
     
     def complete(self, messages: List[Message]) -> LLMResponse:
         try:
+            self.call_count += 1
             system, anthropic_messages = self._convert_messages(messages)
             
             kwargs = {

@@ -215,7 +215,6 @@ The playbook is a JSON file with the following structure:
   "pitfalls": [...],
   "templates": [...],
   "definitions": [...],
-  "code_snippets": [...],
   "metadata": {
     "version": "1.0",
     "created_at": "...",

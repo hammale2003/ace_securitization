@@ -237,7 +237,7 @@ def validate_playbook_operation(operation: Dict[str, Any]) -> bool:
     """Validate a playbook operation dictionary."""
     required_fields = ["type", "section", "content"]
     valid_types = ["ADD"]
-    valid_sections = ["strategies", "pitfalls", "templates", "definitions", "code_snippets"]
+    valid_sections = ["strategies", "pitfalls", "templates", "definitions"]
     
     # Check required fields
     for field in required_fields:
@@ -322,7 +322,7 @@ def export_playbook_to_markdown(playbook_dict: Dict[str, Any], output_path: str)
     lines = ["# ACE Securitization Playbook\n"]
     lines.append(f"*Generated: {datetime.now().isoformat()}*\n\n")
     
-    sections = ["strategies", "pitfalls", "templates", "definitions", "code_snippets"]
+    sections = ["strategies", "pitfalls", "templates", "definitions"]
     
     for section in sections:
         bullets = playbook_dict.get(section, [])

@@ -22,6 +22,7 @@ from embeddings import (
     cosine_similarity, cosine_similarity_matrix
 )
 from retriever import PlaybookRetriever, RetrieverConfig as RetConfig, RetrievedBullet
+from playbook_enricher.redundancy import decide_add_vs_skip_or_modify
 
 
 # =============================================================================
@@ -534,6 +535,88 @@ class TestRetrieverPlaybookIntegration:
         manager.apply_operations(operations)
         
         assert len(retriever._bullet_ids) == initial_count + 1
+
+
+# =============================================================================
+# ENRICHMENT REDUNDANCY / UPGRADE TESTS
+# =============================================================================
+
+class TestEnrichmentRedundancy:
+    """Tests for deterministic redundancy & upgrade logic used by enrichment."""
+
+    def test_exact_duplicate_skips(self, sample_playbook):
+        existing = sample_playbook.strategies[0]
+
+        decision = decide_add_vs_skip_or_modify(
+            playbook=sample_playbook,
+            section="strategies",
+            new_content=existing.content,
+            retriever=None,
+        )
+
+        assert decision.action == "SKIP"
+        assert decision.target_bullet_id == existing.id
+
+    def test_definition_same_term_pointer_upgrades_to_substantive(self, sample_playbook):
+        # Add a pointer definition for the same term
+        pointer = sample_playbook.add_bullet(
+            "definitions",
+            '"ABS Transaction Fee" has the meaning given to it in clause 8.2(b) (Voluntary Cancellation).'
+        )
+
+        decision = decide_add_vs_skip_or_modify(
+            playbook=sample_playbook,
+            section="definitions",
+            new_content="ABS Transaction Fee: means the fee payable to the lender upon voluntary cancellation or prepayment in connection with an ABS transaction.",
+            retriever=None,
+        )
+
+        assert decision.action == "MODIFY"
+        assert decision.target_bullet_id == pointer.id
+
+    def test_definition_same_term_not_better_skips(self, sample_playbook):
+        existing = sample_playbook.add_bullet(
+            "definitions",
+            "True Sale: means a transfer structured so the assets are legally sold and not treated as a secured loan, including opinion support on characterization."
+        )
+
+        # A worse/shorter version should not overwrite
+        decision = decide_add_vs_skip_or_modify(
+            playbook=sample_playbook,
+            section="definitions",
+            new_content="True Sale: means a sale.",
+            retriever=None,
+        )
+
+        assert decision.action == "SKIP"
+        assert decision.target_bullet_id == existing.id
+
+    def test_definition_without_term_is_skipped(self, sample_playbook):
+        decision = decide_add_vs_skip_or_modify(
+            playbook=sample_playbook,
+            section="definitions",
+            new_content="A standard contractual provision establishing that any term written with an initial capital letter has a specific, defined meaning which can be found in the 'Definitions' section of the agreement.",
+            retriever=None,
+        )
+
+        assert decision.action == "SKIP"
+
+    def test_near_duplicate_strategy_upgrades_when_clearly_better(self, sample_playbook):
+        # This bullet already exists in the sample fixture; reuse it to avoid ambiguity
+        existing = sample_playbook.strategies[2]
+
+        decision = decide_add_vs_skip_or_modify(
+            playbook=sample_playbook,
+            section="strategies",
+            new_content="Use waterfall structures to prioritize senior creditors, align cashflow priorities with rating agency expectations, and reduce restructuring friction.",
+            retriever=None,
+            duplicate_similarity_threshold=0.70,  # make the test robust to fallback similarity choice
+            upgrade_similarity_threshold=0.65,
+            upgrade_margin=0.05,
+        )
+
+        assert decision.action == "MODIFY"
+        assert decision.target_bullet_id == existing.id
 
 
 # =============================================================================

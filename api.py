@@ -19,8 +19,8 @@ import uvicorn
 from config import ACEConfig, LLMConfig, PlaybookConfig
 from playbook import PlaybookManager, Playbook, deduplicate_playbook
 from agents import ACEPipeline
-from trainer import TrainerPipeline, TrainerConfig
-from trainer.granularity import GranularityLevel
+from playbook_enricher import EnrichmentPipeline, EnrichmentConfig
+from playbook_enricher.granularity import GranularityLevel
 from errors import ConfigurationError, LLMError, PlaybookError, ValidationError as ACEValidationError, log_error
 from middleware import RateLimitMiddleware, ErrorHandlerMiddleware
 from utils import logger
@@ -141,7 +141,7 @@ class AppState:
     
     def __init__(self):
         self.pipeline: Optional[ACEPipeline] = None
-        self.trainer_pipeline: Optional[TrainerPipeline] = None
+        self.enrichment_pipeline: Optional[EnrichmentPipeline] = None
         self.config: Optional[ACEConfig] = None
         self.initialized: bool = False
     
@@ -150,10 +150,10 @@ class AppState:
         self.config = config
         self.pipeline = ACEPipeline(config)
         
-        # Initialize trainer pipeline
-        trainer_config = TrainerConfig(llm_config=config.llm)
-        self.trainer_pipeline = TrainerPipeline(
-            config=trainer_config,
+        # Initialize enrichment pipeline
+        enrichment_config = EnrichmentConfig(llm_config=config.llm)
+        self.enrichment_pipeline = EnrichmentPipeline(
+            config=enrichment_config,
             playbook_manager=self.pipeline.playbook_manager,
             retriever=self.pipeline.retriever
         )
@@ -163,7 +163,7 @@ class AppState:
     def reset(self):
         """Reset the application state."""
         self.pipeline = None
-        self.trainer_pipeline = None
+        self.enrichment_pipeline = None
         self.config = None
         self.initialized = False
 
@@ -586,19 +586,17 @@ async def get_bullet(bullet_id: str):
 # TRAINER MODE ENDPOINTS
 # =============================================================================
 
-class TrainerEnrichRequest(BaseModel):
-    """Request model for trainer enrichment."""
+class EnrichmentRequest(BaseModel):
+    """Request model for playbook enrichment."""
     json_document: str  # Minified JSON document string
-    extraction_types: Optional[List[str]] = None
-    min_confidence: float = 0.5
-    granularity_level: str = "batch"  # operative_clause_by_clause, batch, or full_document
+    granularity_level: str = "operative_clause_by_clause"  # operative_clause_by_clause or full_document
     preview_only: bool = False
 
 
-@app.post("/trainer/enrich")
-async def trainer_enrich(request: TrainerEnrichRequest):
+@app.post("/enrichment/enrich")
+async def enrich_playbook(request: EnrichmentRequest):
     """
-    Enrich playbook from a securitization document.
+    Enrich playbook from a securitization document using ACE framework.
     
     Accepts minified JSON documents (Master Framework Agreements, etc.)
     and extracts knowledge to enrich the playbook.
@@ -606,39 +604,35 @@ async def trainer_enrich(request: TrainerEnrichRequest):
     if not app_state.initialized:
         raise HTTPException(status_code=400, detail="Pipeline not initialized")
     
-    if not app_state.trainer_pipeline:
-        raise HTTPException(status_code=500, detail="Trainer pipeline not initialized")
+    if not app_state.enrichment_pipeline:
+        raise HTTPException(status_code=500, detail="Enrichment pipeline not initialized")
     
     try:
-        # Update config if provided
-        if request.extraction_types:
-            app_state.trainer_pipeline.config.extraction_types = request.extraction_types
-        app_state.trainer_pipeline.config.min_extraction_confidence = request.min_confidence
-        
-        # Set granularity level
-        try:
-            app_state.trainer_pipeline.config.granularity_level = GranularityLevel(request.granularity_level)
-        except ValueError:
+        # Validate granularity level
+        if request.granularity_level not in ["operative_clause_by_clause", "full_document"]:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Invalid granularity_level. Must be one of: operative_clause_by_clause, batch, full_document"
+                detail="Invalid granularity_level. Must be: operative_clause_by_clause or full_document"
             )
         
-        # Parse document first
-        document = app_state.trainer_pipeline.document_parser.parse_json_string(
+        # Update config
+        app_state.enrichment_pipeline.config.granularity_level = GranularityLevel(request.granularity_level)
+        
+        # Parse document
+        document = app_state.enrichment_pipeline.document_parser.parse_json_string(
             request.json_document
         )
         
         # Preview mode
         if request.preview_only:
-            preview = app_state.trainer_pipeline.get_extraction_preview(document)
+            preview = app_state.enrichment_pipeline.get_extraction_preview(document)
             return {
                 "mode": "preview",
                 "preview": preview
             }
         
         # Full enrichment
-        result = app_state.trainer_pipeline.run_from_document(document)
+        result = app_state.enrichment_pipeline.run_from_document(document)
         
         return {
             "mode": "enrich",
@@ -647,18 +641,18 @@ async def trainer_enrich(request: TrainerEnrichRequest):
         }
     
     except json.JSONDecodeError as e:
-        log_error(logger, e, {"endpoint": "/trainer/enrich"})
+        log_error(logger, e, {"endpoint": "/enrichment/enrich"})
         raise HTTPException(status_code=400, detail="Invalid JSON format")
     except PlaybookError as e:
-        log_error(logger, e, {"endpoint": "/trainer/enrich"})
+        log_error(logger, e, {"endpoint": "/enrichment/enrich"})
         raise HTTPException(status_code=400, detail=e.message)
     except Exception as e:
-        log_error(logger, e, {"endpoint": "/trainer/enrich"})
+        log_error(logger, e, {"endpoint": "/enrichment/enrich"})
         raise HTTPException(status_code=500, detail="Enrichment failed")
 
 
-@app.post("/trainer/parse")
-async def trainer_parse_document(request: TrainerEnrichRequest):
+@app.post("/enrichment/parse")
+async def parse_document(request: EnrichmentRequest):
     """
     Parse a document and return its structure (no enrichment).
     
@@ -667,38 +661,35 @@ async def trainer_parse_document(request: TrainerEnrichRequest):
     if not app_state.initialized:
         raise HTTPException(status_code=400, detail="Pipeline not initialized")
     
-    if not app_state.trainer_pipeline:
-        raise HTTPException(status_code=500, detail="Trainer pipeline not initialized")
+    if not app_state.enrichment_pipeline:
+        raise HTTPException(status_code=500, detail="Enrichment pipeline not initialized")
     
     try:
         # Parse document
-        document = app_state.trainer_pipeline.document_parser.parse_json_string(
+        document = app_state.enrichment_pipeline.document_parser.parse_json_string(
             request.json_document
         )
-        
-        # Get hierarchy
-        hierarchy = app_state.trainer_pipeline.document_parser.get_clause_hierarchy(document)
         
         return {
             "document_uid": document.document_uid,
             "document_type": document.document_type,
             "title": document.title,
             "total_clauses": len(document.get_all_clauses_flat()),
-            "metadata": document.metadata,
-            "hierarchy": hierarchy
+            "operative_clauses": len(document.get_operative_clauses()),
+            "metadata": document.metadata
         }
     
     except json.JSONDecodeError as e:
-        log_error(logger, e, {"endpoint": "/trainer/parse"})
+        log_error(logger, e, {"endpoint": "/enrichment/parse"})
         raise HTTPException(status_code=400, detail="Invalid JSON format")
     except Exception as e:
-        log_error(logger, e, {"endpoint": "/trainer/parse"})
+        log_error(logger, e, {"endpoint": "/enrichment/parse"})
         raise HTTPException(status_code=500, detail="Parsing failed")
 
 
-@app.get("/trainer/stats")
-async def get_trainer_stats():
-    """Get statistics about trainer mode usage."""
+@app.get("/enrichment/stats")
+async def get_enrichment_stats():
+    """Get statistics about enrichment mode usage."""
     if not app_state.initialized:
         raise HTTPException(status_code=400, detail="Pipeline not initialized")
     
@@ -712,34 +703,27 @@ async def get_trainer_stats():
     }
 
 
-@app.get("/trainer/granularity-levels")
+@app.get("/enrichment/granularity-levels")
 async def get_granularity_levels():
     """Get available granularity levels with descriptions."""
     return {
         "levels": [
             {
                 "value": GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE.value,
-                "name": "Operative Clause-by-Clause",
-                "description": GranularityLevel.get_description(GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE),
-                "cost": GranularityLevel.get_cost_indicator(GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE),
-                "accuracy": GranularityLevel.get_accuracy_indicator(GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE)
-            },
-            {
-                "value": GranularityLevel.BATCH.value,
-                "name": "Batch Processing",
-                "description": GranularityLevel.get_description(GranularityLevel.BATCH),
-                "cost": GranularityLevel.get_cost_indicator(GranularityLevel.BATCH),
-                "accuracy": GranularityLevel.get_accuracy_indicator(GranularityLevel.BATCH)
+                "name": "Operative Clause-by-Clause (ACE Evaluation)",
+                "description": "Processes each operative clause individually with ACE framework evaluation for maximum quality",
+                "cost": "High",
+                "accuracy": "Highest"
             },
             {
                 "value": GranularityLevel.FULL_DOCUMENT.value,
                 "name": "Full Document",
-                "description": GranularityLevel.get_description(GranularityLevel.FULL_DOCUMENT),
-                "cost": GranularityLevel.get_cost_indicator(GranularityLevel.FULL_DOCUMENT),
-                "accuracy": GranularityLevel.get_accuracy_indicator(GranularityLevel.FULL_DOCUMENT)
+                "description": "Processes entire document in one pass with ACE evaluation of extracted items",
+                "cost": "Low",
+                "accuracy": "Good"
             }
         ],
-        "default": GranularityLevel.BATCH.value
+        "default": GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE.value
     }
 
 # =============================================================================
