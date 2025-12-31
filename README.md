@@ -12,6 +12,7 @@ This system implements the ACE (Agentic Context Engineering) framework for build
 - **Multi-Provider Support**: Works with OpenAI, Anthropic Claude, and Google Gemini
 - **Streaming Support**: Real-time token streaming for responsive UX
 - **Incremental Updates**: Delta-based playbook updates prevent context collapse
+- **Text Cleaning**: Automatic cleaning of problematic characters (smart quotes, placeholders, special Unicode)
 
 ## Architecture
 

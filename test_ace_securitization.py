@@ -610,7 +610,7 @@ class TestEnrichmentRedundancy:
             section="strategies",
             new_content="Use waterfall structures to prioritize senior creditors, align cashflow priorities with rating agency expectations, and reduce restructuring friction.",
             retriever=None,
-            duplicate_similarity_threshold=0.70,  # make the test robust to fallback similarity choice
+            duplicate_similarity_threshold=0.70,  
             upgrade_similarity_threshold=0.65,
             upgrade_margin=0.05,
         )

@@ -31,6 +31,8 @@ class EnrichmentConfig:
     dedupe_similarity_threshold: float = 0.86
     upgrade_similarity_threshold: float = 0.78
     upgrade_margin: float = 0.08
+    # Batch processing: process multiple items together to reduce LLM calls
+    max_items_per_batch: int = 1  # Default to 1 (individual processing), set higher for batching
 
 
 @dataclass
@@ -132,7 +134,10 @@ class EnrichmentPipeline:
             granularity_level=self.config.granularity_level,
             allowed_sections=self.config.extraction_sections
         )
-        logger.info(f"Extracted {len(extracted_items)} knowledge items")
+        
+        # Filter: Keep only items that match selected sections
+        extracted_items = [item for item in extracted_items if item.section in self.config.extraction_sections]
+        logger.info(f"Extracted {len(extracted_items)} knowledge items (filtered to: {', '.join(self.config.extraction_sections)})")
         
         if not extracted_items:
             logger.warning("No knowledge extracted from document")
@@ -146,84 +151,182 @@ class EnrichmentPipeline:
                 added_bullet_ids=[]
             )
         
-        # Step 2: Process each item through ACE pipeline
+        # Step 2: Process items through ACE pipeline (with optional batching)
         logger.info("Step 2: Processing through ACE framework")
+        logger.info(f"Batch size: {self.config.max_items_per_batch} items per batch")
         added_bullet_ids = []
         skipped_count = 0
         
-        for idx, item in enumerate(extracted_items, 1):
-            logger.debug(f"Processing item {idx}/{len(extracted_items)}")
+        # Process in batches if batch size > 1
+        if self.config.max_items_per_batch > 1:
+            # Batch processing
+            num_batches = (len(extracted_items) + self.config.max_items_per_batch - 1) // self.config.max_items_per_batch
+            logger.info(f"Processing {len(extracted_items)} items in {num_batches} batches")
             
-            # Use ACE to evaluate and apply operations
-            operations = self._evaluate_knowledge(item, playbook)
-            
-            # Post-process operations to avoid redundant ADDs (and upgrade existing bullets when better)
-            effective_ops = self._postprocess_operations(item, operations, playbook)
+            for batch_idx in range(num_batches):
+                start_idx = batch_idx * self.config.max_items_per_batch
+                end_idx = min(start_idx + self.config.max_items_per_batch, len(extracted_items))
+                batch_items = extracted_items[start_idx:end_idx]
+                
+                logger.info(f"Processing batch {batch_idx + 1}/{num_batches} ({len(batch_items)} items)")
+                
+                # Process batch through ACE framework
+                batch_results = self._evaluate_knowledge_batch(batch_items, playbook)
+                
+                # Track items added in this batch to check for intra-batch duplicates
+                batch_added_items = {}  # section -> list of (content, item) tuples
+                
+                # Apply operations for each item in batch
+                for item, operations in zip(batch_items, batch_results):
+                    # Post-process operations to avoid redundant ADDs
+                    # This checks against existing playbook AND items already processed in this batch
+                    effective_ops = self._postprocess_operations_with_batch_context(
+                        item, operations, playbook, batch_added_items
+                    )
+                    
+                    if effective_ops:
+                        # Apply all curator operations
+                        for op in effective_ops:
+                            op_type = op.get("type")
+                            
+                            if op_type == "ADD":
+                                section = op.get("section", item.section)
+                                content = op.get("content", item.content)
+                                bullet = playbook.add_bullet(section, content)
+                                added_bullet_ids.append(bullet.id)
+                                logger.debug(f"Added bullet {bullet.id} to {section}")
+                                
+                                # Track in batch context for subsequent items (BEFORE updating retriever)
+                                if section not in batch_added_items:
+                                    batch_added_items[section] = []
+                                batch_added_items[section].append((content, item))
+                                
+                                # Update retriever immediately so subsequent items in batch can see it
+                                if self.retriever:
+                                    self.retriever.add_bullet(bullet.id, bullet.content, section)
+                            
+                            elif op_type == "REMOVE":
+                                bullet_id = op.get("bullet_id")
+                                reason = op.get("reason", "")
+                                if bullet_id:
+                                    playbook.remove_bullet(bullet_id, reason)
+                                    logger.debug(f"Removed bullet {bullet_id}: {reason}")
+                                    
+                                    # Update retriever
+                                    if self.retriever:
+                                        self.retriever.remove_bullet(bullet_id)
+                            
+                            elif op_type == "MODIFY":
+                                bullet_id = op.get("bullet_id")
+                                new_content = op.get("new_content")
+                                reason = op.get("reason", "")
+                                reset_harmful = op.get("reset_harmful", False)
+                                if bullet_id and new_content:
+                                    playbook.modify_bullet(bullet_id, new_content, reason, reset_harmful)
+                                    logger.debug(f"Modified bullet {bullet_id}: {reason}")
+                                    
+                                    # Update retriever - find section by searching all sections
+                                    if self.retriever:
+                                        section = self._find_bullet_section(playbook, bullet_id)
+                                        if section:
+                                            self.retriever.update_bullet(bullet_id, new_content)
+                            
+                            elif op_type == "MERGE":
+                                source_ids = op.get("source_bullet_ids", [])
+                                target_section = op.get("target_section")
+                                merged_content = op.get("merged_content")
+                                reason = op.get("reason", "")
+                                if len(source_ids) >= 2 and target_section and merged_content:
+                                    new_bullet = playbook.merge_bullets(
+                                        source_ids, target_section, merged_content, reason
+                                    )
+                                    if new_bullet:
+                                        added_bullet_ids.append(new_bullet.id)
+                                        logger.debug(f"Merged {len(source_ids)} bullets into {new_bullet.id}")
+                                        
+                                        # Update retriever
+                                        if self.retriever:
+                                            for src_id in source_ids:
+                                                self.retriever.remove_bullet(src_id)
+                                            self.retriever.add_bullet(new_bullet.id, merged_content, target_section)
+                    else:
+                        skipped_count += 1
+                        logger.debug(f"Skipped item: not specific enough or duplicate")
+        else:
+            # Individual processing (original behavior)
+            for idx, item in enumerate(extracted_items, 1):
+                logger.debug(f"Processing item {idx}/{len(extracted_items)}")
+                
+                # Use ACE to evaluate and apply operations
+                operations = self._evaluate_knowledge(item, playbook)
+                
+                # Post-process operations to avoid redundant ADDs (and upgrade existing bullets when better)
+                effective_ops = self._postprocess_operations(item, operations, playbook)
 
-            if effective_ops:
-                # Apply all curator operations
-                for op in effective_ops:
-                    op_type = op.get("type")
-                    
-                    if op_type == "ADD":
-                        section = op.get("section", item.section)
-                        content = op.get("content", item.content)
-                        bullet = playbook.add_bullet(section, content)
-                        added_bullet_ids.append(bullet.id)
-                        logger.debug(f"Added bullet {bullet.id} to {section}")
+                if effective_ops:
+                    # Apply all curator operations
+                    for op in effective_ops:
+                        op_type = op.get("type")
                         
-                        # Update retriever
-                        if self.retriever:
-                            self.retriever.add_bullet(bullet.id, bullet.content, section)
-                    
-                    elif op_type == "REMOVE":
-                        bullet_id = op.get("bullet_id")
-                        reason = op.get("reason", "")
-                        if bullet_id:
-                            playbook.remove_bullet(bullet_id, reason)
-                            logger.debug(f"Removed bullet {bullet_id}: {reason}")
+                        if op_type == "ADD":
+                            section = op.get("section", item.section)
+                            content = op.get("content", item.content)
+                            bullet = playbook.add_bullet(section, content)
+                            added_bullet_ids.append(bullet.id)
+                            logger.debug(f"Added bullet {bullet.id} to {section}")
                             
                             # Update retriever
                             if self.retriever:
-                                self.retriever.remove_bullet(bullet_id)
-                    
-                    elif op_type == "MODIFY":
-                        bullet_id = op.get("bullet_id")
-                        new_content = op.get("new_content")
-                        reason = op.get("reason", "")
-                        reset_harmful = op.get("reset_harmful", False)
-                        if bullet_id and new_content:
-                            playbook.modify_bullet(bullet_id, new_content, reason, reset_harmful)
-                            logger.debug(f"Modified bullet {bullet_id}: {reason}")
-                            
-                            # Update retriever - find section by searching all sections
-                            if self.retriever:
-                                section = self._find_bullet_section(playbook, bullet_id)
-                                if section:
-                                    # retriever.update_bullet signature is (bullet_id, new_content, helpful_count?, harmful_count?)
-                                    self.retriever.update_bullet(bullet_id, new_content)
-                    
-                    elif op_type == "MERGE":
-                        source_ids = op.get("source_bullet_ids", [])
-                        target_section = op.get("target_section")
-                        merged_content = op.get("merged_content")
-                        reason = op.get("reason", "")
-                        if len(source_ids) >= 2 and target_section and merged_content:
-                            new_bullet = playbook.merge_bullets(
-                                source_ids, target_section, merged_content, reason
-                            )
-                            if new_bullet:
-                                added_bullet_ids.append(new_bullet.id)
-                                logger.debug(f"Merged {len(source_ids)} bullets into {new_bullet.id}")
+                                self.retriever.add_bullet(bullet.id, bullet.content, section)
+                        
+                        elif op_type == "REMOVE":
+                            bullet_id = op.get("bullet_id")
+                            reason = op.get("reason", "")
+                            if bullet_id:
+                                playbook.remove_bullet(bullet_id, reason)
+                                logger.debug(f"Removed bullet {bullet_id}: {reason}")
                                 
                                 # Update retriever
                                 if self.retriever:
-                                    for src_id in source_ids:
-                                        self.retriever.remove_bullet(src_id)
-                                    self.retriever.add_bullet(new_bullet.id, merged_content, target_section)
-            else:
-                skipped_count += 1
-                logger.debug(f"Skipped item: not specific enough or duplicate")
+                                    self.retriever.remove_bullet(bullet_id)
+                        
+                        elif op_type == "MODIFY":
+                            bullet_id = op.get("bullet_id")
+                            new_content = op.get("new_content")
+                            reason = op.get("reason", "")
+                            reset_harmful = op.get("reset_harmful", False)
+                            if bullet_id and new_content:
+                                playbook.modify_bullet(bullet_id, new_content, reason, reset_harmful)
+                                logger.debug(f"Modified bullet {bullet_id}: {reason}")
+                                
+                                # Update retriever - find section by searching all sections
+                                if self.retriever:
+                                    section = self._find_bullet_section(playbook, bullet_id)
+                                    if section:
+                                        # retriever.update_bullet signature is (bullet_id, new_content, helpful_count?, harmful_count?)
+                                        self.retriever.update_bullet(bullet_id, new_content)
+                        
+                        elif op_type == "MERGE":
+                            source_ids = op.get("source_bullet_ids", [])
+                            target_section = op.get("target_section")
+                            merged_content = op.get("merged_content")
+                            reason = op.get("reason", "")
+                            if len(source_ids) >= 2 and target_section and merged_content:
+                                new_bullet = playbook.merge_bullets(
+                                    source_ids, target_section, merged_content, reason
+                                )
+                                if new_bullet:
+                                    added_bullet_ids.append(new_bullet.id)
+                                    logger.debug(f"Merged {len(source_ids)} bullets into {new_bullet.id}")
+                                    
+                                    # Update retriever
+                                    if self.retriever:
+                                        for src_id in source_ids:
+                                            self.retriever.remove_bullet(src_id)
+                                        self.retriever.add_bullet(new_bullet.id, merged_content, target_section)
+                else:
+                    skipped_count += 1
+                    logger.debug(f"Skipped item: not specific enough or duplicate")
         
         # Save playbook
         self.playbook_manager.save()
@@ -259,6 +362,20 @@ class EnrichmentPipeline:
         - If the incoming content is clearly better (e.g. a substantive definition replacing a pointer),
           convert ADD -> MODIFY on the existing bullet instead of adding a duplicate.
         """
+        return self._postprocess_operations_with_batch_context(item, operations, playbook, {})
+
+    def _postprocess_operations_with_batch_context(
+        self,
+        item: ExtractedKnowledge,
+        operations: List[Dict[str, Any]],
+        playbook: Playbook,
+        batch_added_items: Dict[str, List[tuple]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Enforce deterministic redundancy control with batch context.
+        
+        Also checks against items already added in the current batch.
+        """
         if not operations:
             return []
 
@@ -276,6 +393,14 @@ class EnrichmentPipeline:
             section = op.get("section", item.section)
             content = op.get("content", item.content)
 
+            # First check against items already added in this batch
+            if self._is_duplicate_in_batch(content, section, batch_added_items, playbook):
+                logger.info(
+                    f"Redundancy: SKIP ADD into {section} (duplicate within current batch)"
+                )
+                continue
+
+            # Then check against existing playbook
             decision = decide_add_vs_skip_or_modify(
                 playbook=playbook,
                 section=section,
@@ -313,6 +438,62 @@ class EnrichmentPipeline:
             effective.append(op)
 
         return effective
+    
+    def _is_duplicate_in_batch(
+        self,
+        content: str,
+        section: str,
+        batch_added_items: Dict[str, List[tuple]],
+        playbook: Playbook
+    ) -> bool:
+        """
+        Check if content is a duplicate of items already added in the current batch.
+        Uses the same redundancy logic as the playbook check.
+        """
+        if section not in batch_added_items:
+            return False
+        
+        from playbook_enricher.redundancy import (
+            normalize_text, 
+            extract_definition_term,
+            content_quality_score
+        )
+        from playbook import compute_semantic_similarity
+        
+        # Check against each item in the batch
+        for batch_content, batch_item in batch_added_items[section]:
+            # 1. Check for exact duplicates (normalized)
+            if normalize_text(batch_content) == normalize_text(content):
+                logger.debug(f"Found exact duplicate in batch")
+                return True
+            
+            # 2. For definitions, check if same term
+            if section == "definitions":
+                term1 = extract_definition_term(batch_content)
+                term2 = extract_definition_term(content)
+                if term1 and term2 and term1.lower() == term2.lower():
+                    # Same term - check if one is clearly better
+                    batch_q = content_quality_score(section, batch_content)
+                    new_q = content_quality_score(section, content)
+                    
+                    # If new content is not significantly better, skip as duplicate
+                    if new_q <= batch_q + self.config.upgrade_margin:
+                        logger.debug(f"Found duplicate definition term in batch: {term1} (quality: batch={batch_q:.2f}, new={new_q:.2f})")
+                        return True
+            
+            # 3. Check semantic similarity
+            similarity = compute_semantic_similarity(batch_content, content)
+            if similarity >= self.config.dedupe_similarity_threshold:
+                # Check if new content is significantly better
+                batch_q = content_quality_score(section, batch_content)
+                new_q = content_quality_score(section, content)
+                
+                # If new content is not significantly better, skip as duplicate
+                if new_q <= batch_q + self.config.upgrade_margin:
+                    logger.debug(f"Found duplicate in batch: similarity={similarity:.2f} (quality: batch={batch_q:.2f}, new={new_q:.2f})")
+                    return True
+        
+        return False
     
     def _find_bullet_section(self, playbook: Playbook, bullet_id: str) -> Optional[str]:
         """Find which section a bullet belongs to."""
@@ -367,7 +548,8 @@ class EnrichmentPipeline:
                 section=item.section,
                 generator_output=generator_output,
                 reflector_output=reflector_output,
-                playbook=playbook
+                playbook=playbook,
+                allowed_sections=self.config.extraction_sections
             )
             
             logger.info(f"Curator: {len(curator_output.operations)} operations")
@@ -378,6 +560,77 @@ class EnrichmentPipeline:
         except Exception as e:
             logger.warning(f"Error evaluating knowledge: {e}")
             return []
+    
+    def _evaluate_knowledge_batch(
+        self,
+        items: List[ExtractedKnowledge],
+        playbook: Playbook
+    ) -> List[List[Dict[str, Any]]]:
+        """
+        Evaluate multiple knowledge items in a batch using enrichment-specific ACE framework.
+        
+        Returns:
+            List of operation lists, one per item
+        """
+        if not items:
+            return []
+        
+        try:
+            # Prepare batch data
+            batch_data = []
+            for item in items:
+                source_info = f"{item.document_title} - {item.source_clause_title}"
+                batch_data.append({
+                    "content": item.content,
+                    "section": item.section,
+                    "source_info": source_info
+                })
+            
+            logger.info(f"Batch evaluating {len(items)} items")
+            
+            # Step 1: Generator validates batch
+            generator_outputs = self.generator.validate_batch(batch_data, playbook)
+            
+            for idx, (item, gen_output) in enumerate(zip(items, generator_outputs)):
+                logger.info(f"Item {idx+1} Generator: {gen_output.recommendation} | Valid={gen_output.is_valid} | Duplicate={gen_output.is_duplicate}")
+            
+            # Step 2: Reflector assesses batch
+            reflector_inputs = []
+            for item, gen_output in zip(batch_data, generator_outputs):
+                reflector_inputs.append({
+                    "content": item["content"],
+                    "section": item["section"],
+                    "source_info": item["source_info"],
+                    "generator_output": gen_output
+                })
+            
+            reflector_outputs = self.reflector.assess_batch(reflector_inputs)
+            
+            for idx, (item, ref_output) in enumerate(zip(items, reflector_outputs)):
+                logger.info(f"Item {idx+1} Reflector: Quality={ref_output.quality_score:.2f}, Specificity={ref_output.specificity_score:.2f}, Reusability={ref_output.reusability_score:.2f}")
+            
+            # Step 3: Curator decides batch
+            curator_inputs = []
+            for item, gen_output, ref_output in zip(batch_data, generator_outputs, reflector_outputs):
+                curator_inputs.append({
+                    "content": item["content"],
+                    "section": item["section"],
+                    "generator_output": gen_output,
+                    "reflector_output": ref_output
+                })
+            
+            curator_outputs = self.curator.decide_batch(curator_inputs, playbook, allowed_sections=self.config.extraction_sections)
+            
+            for idx, (item, cur_output) in enumerate(zip(items, curator_outputs)):
+                logger.info(f"Item {idx+1} Curator: {len(cur_output.operations)} operations")
+            
+            # Return list of operation lists
+            return [cur_output.operations for cur_output in curator_outputs]
+        
+        except Exception as e:
+            logger.warning(f"Error evaluating knowledge batch: {e}")
+            # Return empty operations for all items on error
+            return [[] for _ in items]
     
     def get_extraction_preview(
         self,

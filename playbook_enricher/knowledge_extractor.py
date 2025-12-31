@@ -69,31 +69,44 @@ CRITICAL RULES - READ CAREFULLY:
 2. Extract ONLY from the text provided in the document
 3. You MUST extract ONLY for these sections: {', '.join(allowed_sections)}
 4. DO NOT extract content for sections not in the allowed list
-5. If the document does not contain information for allowed sections, return empty array
+5. BE COMPREHENSIVE - Extract ALL items that match the allowed sections, not just a few
 
 ALLOWED SECTIONS FOR THIS EXTRACTION:
 {sections_text}
 
 SECTION-SPECIFIC EXTRACTION RULES:
 
-{"- DEFINITIONS: Extract ALL term definitions including pointer definitions (e.g., 'X has the meaning in clause Y'). Extract as-is." if "definitions" in allowed_sections else ""}
-{"- STRATEGIES: Extract ONLY best practices, methodologies, or approaches. DO NOT extract definitions or templates." if "strategies" in allowed_sections else ""}
-{"- PITFALLS: Extract ONLY warnings about mistakes or things to avoid. DO NOT extract definitions or strategies." if "pitfalls" in allowed_sections else ""}
-{"- TEMPLATES: Extract ONLY reusable clause patterns with conditional variants [if...]. DO NOT extract definitions or strategies." if "templates" in allowed_sections else ""}
+{"- DEFINITIONS: Extract ALL term definitions including pointer definitions (e.g., 'X has the meaning in clause Y'). Extract EXACTLY as written. Extract EVERY definition you find." if "definitions" in allowed_sections else ""}
+{"- STRATEGIES: REFORMULATE clauses into reusable best practices. DO NOT copy-paste raw contract text. Extract the UNDERLYING PATTERN/PRINCIPLE that can be applied to different transactions. Remove transaction-specific names/details. Format as actionable guidance. Example: Raw clause 'Each party shall enter into Transaction Documents to incorporate definitions by reference' → Strategy 'Use master framework agreements to incorporate common definitions by reference across transaction documents, reducing redundancy and ensuring consistency.'" if "strategies" in allowed_sections else ""}
+{"- PITFALLS: REFORMULATE into reusable warnings. Extract the UNDERLYING MISTAKE/RISK that can occur in different contexts. Remove transaction-specific details. Format as clear warnings. Example: Raw clause mentioning a specific error → Pitfall 'Risk: Failing to include deemed collections in the Collections definition prevents capturing value from non-cash receivable reductions.'" if "pitfalls" in allowed_sections else ""}
+{"- TEMPLATES: Extract reusable clause PATTERNS with conditional variants [if...] or parameterized patterns using {{placeholders}}. Generalize transaction-specific language. Extract EVERY template pattern you find." if "templates" in allowed_sections else ""}
 
-Extract ONLY information that is:
-- EXPLICITLY PRESENT in the document text (not inferred or assumed)
-- Specific to this transaction structure (not generic legal principles)
+Extract information that is:
+- For DEFINITIONS: EXPLICITLY PRESENT in the document text (extract exactly as written)
+- For STRATEGIES/PITFALLS: REFORMULATED from clauses into reusable insights (abstract the principle, remove transaction-specific names)
+- For TEMPLATES: Generalized patterns with {{placeholders}} for variable elements
+- Specific to this transaction structure OR reusable patterns (not generic legal principles)
 - Belongs to ONE of the allowed sections: {', '.join(allowed_sections)}
-- Reusable for similar transactions
+- Applicable to similar transactions in different contexts
+
+CRITICAL - REFORMULATION FOR STRATEGIES/PITFALLS:
+- DO NOT copy-paste raw contract sentences
+- ABSTRACT the underlying principle/pattern
+- REMOVE transaction-specific entity names, dates, amounts
+- FORMAT as actionable guidance that applies to ANY similar transaction
+- Think: "What is the reusable insight here that another lawyer could apply?"
+
+IMPORTANT - BE COMPREHENSIVE:
+- Do NOT skip items because you think they're "too obvious" or "too simple"
+- Do NOT limit yourself to a small number - extract EVERYTHING that matches
 
 Return JSON:
 {{
   "extracted_items": [
     {{
       "section": "{allowed_sections_list}",
-      "content": "Exact text or pattern extracted from document",
-      "reasoning": "Why this belongs to this specific section"
+      "content": "For definitions: exact text. For strategies/pitfalls: reformulated reusable insight. For templates: generalized pattern.",
+      "reasoning": "Why this belongs to this section and how it was reformulated (if applicable)"
     }}
   ]
 }}
@@ -106,8 +119,10 @@ EXTRACTION RULES:
 - If you extract a definition but "definitions" is not allowed, DISCARD it
 - If you extract a strategy but "strategies" is not allowed, DISCARD it
 - Only verify the SECTION is correct
+- DO NOT limit the number of items - extract ALL matching content
 
-Your role: EXTRACT EVERYTHING. ACE's role: VALIDATE and DECIDE what to keep."""
+Your role: EXTRACT EVERYTHING COMPREHENSIVELY. ACE's role: VALIDATE and DECIDE what to keep.
+If you find 0 items, that's fine. But if you find 10 items, extract all 10, not just 2-3."""
     
     def extract_from_document(
         self,
@@ -153,7 +168,15 @@ Clause: {clause.title_text or clause.uid}
 Text:
 {clause_text}
 
-Extract ALL information that matches the allowed sections: {', '.join(allowed_sections)} from the text above. Do not invent or generalize."""
+TASK: Extract knowledge that matches the allowed sections: {', '.join(allowed_sections)}
+
+CRITICAL INSTRUCTIONS:
+- For DEFINITIONS: Extract term definitions EXACTLY as written
+- For STRATEGIES: REFORMULATE clauses into reusable best practices - abstract the principle, remove transaction-specific names/dates/amounts
+- For PITFALLS: REFORMULATE into reusable warnings - extract the underlying risk/mistake
+- For TEMPLATES: Generalize into patterns with {{placeholders}}
+
+DO NOT copy-paste raw contract text for strategies/pitfalls. Reformulate into actionable guidance."""
             
             try:
                 response = self.llm_client.chat(extraction_prompt, user_message)
@@ -289,18 +312,30 @@ Focus on transaction-specific patterns that are explicitly present in the docume
                 response = self.llm_client.chat(extraction_prompt, user_message)
                 parsed = response.parse_json()
                 
+                # Log raw response for debugging
+                if parsed and "extracted_items" in parsed:
+                    raw_count = len(parsed["extracted_items"])
+                    logger.debug(f"Chunk {chunk_idx + 1}/{num_chunks}: LLM returned {raw_count} raw items")
+                else:
+                    logger.warning(f"Chunk {chunk_idx + 1}/{num_chunks}: LLM returned no 'extracted_items' field. Response: {parsed}")
+                
                 if parsed and "extracted_items" in parsed:
                     chunk_extracted = 0
+                    skipped_missing = 0
+                    skipped_wrong_section = 0
+                    
                     for item in parsed["extracted_items"]:
                         section = item.get("section")
                         content = item.get("content")
                         
                         if not content or not section:
-                            logger.debug(f"Skipping item: missing content or section")
+                            skipped_missing += 1
+                            logger.debug(f"Skipping item: missing content or section. Item: {item}")
                             continue
                         
                         if section not in allowed_sections:
-                            logger.warning(f"Skipping item: section '{section}' not in allowed sections {allowed_sections}")
+                            skipped_wrong_section += 1
+                            logger.warning(f"Skipping item: section '{section}' not in allowed sections {allowed_sections}. Content: {content[:100]}...")
                             continue
                         
                         all_extracted.append(ExtractedKnowledge(
@@ -314,7 +349,14 @@ Focus on transaction-specific patterns that are explicitly present in the docume
                         ))
                         chunk_extracted += 1
                     
-                    logger.info(f"Chunk {chunk_idx + 1}/{num_chunks}: Extracted {chunk_extracted} items")
+                    logger.info(f"Chunk {chunk_idx + 1}/{num_chunks}: Extracted {chunk_extracted} items (skipped {skipped_missing} missing, {skipped_wrong_section} wrong section)")
+                    
+                    # Log breakdown by section
+                    if chunk_extracted > 0:
+                        section_counts = {}
+                        for item in all_extracted[-chunk_extracted:]:
+                            section_counts[item.section] = section_counts.get(item.section, 0) + 1
+                        logger.info(f"Chunk {chunk_idx + 1}/{num_chunks} breakdown: {section_counts}")
                 else:
                     logger.warning(f"Chunk {chunk_idx + 1}/{num_chunks}: No items extracted")
                     

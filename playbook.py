@@ -14,7 +14,7 @@ from datetime import datetime
 import threading
 
 from config import PLAYBOOK_SECTIONS, SECTION_PREFIXES, PlaybookConfig
-from utils import logger
+from utils import logger, clean_text_content
 
 
 @dataclass
@@ -49,6 +49,11 @@ class Bullet:
         for key, default in defaults.items():
             if key not in data:
                 data[key] = default
+        
+        # Clean the content to remove problematic characters
+        if "content" in data and data["content"]:
+            data["content"] = clean_text_content(data["content"])
+        
         return cls(**data)
     
     def mark_helpful(self):
@@ -137,6 +142,9 @@ class Playbook:
     
     def add_bullet(self, section: str, content: str) -> Bullet:
         """Add a new bullet to the specified section."""
+        # Clean content before adding
+        content = clean_text_content(content)
+        
         prefix = SECTION_PREFIXES.get(section, "unk")
         section_list = self.get_section(section)
         
@@ -210,8 +218,8 @@ class Playbook:
         if bullet is None:
             return None
         
-        # Update content
-        bullet.content = new_content
+        # Clean and update content
+        bullet.content = clean_text_content(new_content)
         bullet.updated_at = datetime.utcnow().isoformat()
         bullet.revision_count += 1
         

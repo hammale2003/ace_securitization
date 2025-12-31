@@ -29,8 +29,8 @@ class LLMResponse:
     raw_response: Any = None
     usage: Optional[Dict[str, int]] = None
     
-    def parse_json(self) -> Optional[Dict[str, Any]]:
-        """Attempt to parse the response content as JSON."""
+    def parse_json(self) -> Optional[Any]:
+        """Attempt to parse the response content as JSON (object or array)."""
         content = self.content.strip()
         
         # Try to extract JSON from markdown code blocks
@@ -38,12 +38,26 @@ class LLMResponse:
         if json_match:
             content = json_match.group(1)
         
-        # Try to find JSON object in the content
-        json_start = content.find('{')
-        json_end = content.rfind('}')
+        # Try to find JSON array first (for batch responses)
+        array_start = content.find('[')
+        array_end = content.rfind(']')
         
-        if json_start != -1 and json_end != -1:
-            content = content[json_start:json_end + 1]
+        # Try to find JSON object
+        obj_start = content.find('{')
+        obj_end = content.rfind('}')
+        
+        # Prefer array if both found, otherwise use what's available
+        if array_start != -1 and array_end != -1:
+            # Check if array is more complete than object
+            if obj_start == -1 or (array_start < obj_start and array_end > obj_end):
+                content = content[array_start:array_end + 1]
+            elif obj_start != -1 and obj_end != -1:
+                content = content[obj_start:obj_end + 1]
+        elif obj_start != -1 and obj_end != -1:
+            content = content[obj_start:obj_end + 1]
+        else:
+            # No JSON found, try parsing the whole content
+            pass
         
         try:
             return json.loads(content)
@@ -53,7 +67,27 @@ class LLMResponse:
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
-                return None
+                # Try to fix incomplete JSON (common with truncated responses)
+                content = self._fix_incomplete_json(content)
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError:
+                    return None
+    
+    def _fix_incomplete_json(self, content: str) -> str:
+        """Attempt to fix incomplete JSON (e.g., truncated arrays)."""
+        # If it looks like an incomplete array, try to close it
+        if content.strip().startswith('[') and not content.strip().endswith(']'):
+            # Count open brackets
+            open_count = content.count('[')
+            close_count = content.count(']')
+            # Add missing closing brackets
+            content = content + ']' * (open_count - close_count)
+            # Try to close any open objects
+            open_braces = content.count('{')
+            close_braces = content.count('}')
+            content = content + '}' * (open_braces - close_braces)
+        return content
     
     def _fix_json_errors(self, content: str) -> str:
         """Attempt to fix common JSON formatting errors."""

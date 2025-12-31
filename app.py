@@ -1087,6 +1087,25 @@ def render_enrichment_mode():
     
     st.markdown("---")
     
+    # Batch Processing Settings
+    st.markdown("**Batch Processing:**")
+    
+    max_items_per_batch = st.number_input(
+        "Max Items Per Batch",
+        min_value=1,
+        max_value=50,
+        value=1,
+        step=1,
+        help="Number of extracted knowledge items to process together in a single LLM call. Set to 1 for individual processing (most expensive). Higher values reduce costs but increase prompt size."
+    )
+    
+    if max_items_per_batch > 1:
+        st.info(f"✓ Batch processing enabled: {max_items_per_batch} items per batch. This will significantly reduce LLM calls and costs.")
+    else:
+        st.warning("⚠ Individual processing: Each item processed separately (most expensive but highest quality per item).")
+    
+    st.markdown("---")
+    
     
     # Action buttons
     st.subheader("3. Run Extraction")
@@ -1129,9 +1148,10 @@ def render_enrichment_mode():
         else:
             with st.spinner("Generating preview..."):
                 try:
-                    # Update config with selected sections and granularity
+                    # Update config with selected sections, granularity, and batch size
                     st.session_state.enrichment_pipeline.config.extraction_sections = extraction_sections
                     st.session_state.enrichment_pipeline.config.granularity_level = granularity_enum
+                    st.session_state.enrichment_pipeline.config.max_items_per_batch = max_items_per_batch
                     
                     document = st.session_state.enrichment_pipeline.document_parser.parse_json_string(json_input)
                     
@@ -1165,9 +1185,10 @@ def render_enrichment_mode():
             st.error("Please select at least one section to extract")
         else:
             try:
-                # Update config with selected sections and granularity
+                # Update config with selected sections, granularity, and batch size
                 st.session_state.enrichment_pipeline.config.extraction_sections = extraction_sections
                 st.session_state.enrichment_pipeline.config.granularity_level = granularity_enum
+                st.session_state.enrichment_pipeline.config.max_items_per_batch = max_items_per_batch
                 
                 document = st.session_state.enrichment_pipeline.document_parser.parse_json_string(json_input)
                 

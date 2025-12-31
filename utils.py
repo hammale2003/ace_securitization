@@ -143,6 +143,73 @@ def normalize_whitespace(text: str) -> str:
     return re.sub(r'\s+', ' ', text).strip()
 
 
+def clean_text_content(text: str) -> str:
+    """
+    Clean text content by removing or replacing problematic characters.
+    
+    Handles:
+    - Smart quotes ("" '') → standard quotes ("")
+    - Bullet placeholder [●] → [PLACEHOLDER] or removes it
+    - Degree symbol (°) → removes or replaces
+    - Multiple newlines → normalized
+    - Other special Unicode characters
+    
+    Args:
+        text: The text to clean
+        
+    Returns:
+        Cleaned text
+    """
+    if not text:
+        return text
+    
+    import re
+    
+    # Replace smart/curly quotes with standard quotes
+    text = text.replace('"', '"').replace('"', '"')  # Smart double quotes
+    text = text.replace(''', "'").replace(''', "'")  # Smart single quotes
+    text = text.replace('«', '"').replace('»', '"')  # French guillemets
+    text = text.replace('‹', "'").replace('›', "'")  # Single guillemets
+    
+    # Replace bullet placeholder with more readable text
+    text = text.replace('[●]', '[PARTY_NAME]')
+    text = text.replace('●', '[PARTY_NAME]')
+    
+    # Remove or replace degree symbol if not used in proper context (like temperature)
+    # Keep it if it's part of a number (e.g., "45°")
+    text = re.sub(r'(?<!\d)°(?!\s*[CF])', '', text)
+    
+    # Normalize various dash types to standard hyphen or em-dash
+    text = text.replace('–', '-')  # en-dash
+    text = text.replace('—', ' - ')  # em-dash
+    text = text.replace('−', '-')  # minus sign
+    
+    # Remove zero-width spaces and other invisible characters
+    text = text.replace('\u200b', '')  # zero-width space
+    text = text.replace('\u200c', '')  # zero-width non-joiner
+    text = text.replace('\u200d', '')  # zero-width joiner
+    text = text.replace('\ufeff', '')  # zero-width no-break space (BOM)
+    
+    # Normalize ellipsis
+    text = text.replace('…', '...')
+    
+    # Normalize multiple spaces to single space (but preserve intentional line breaks)
+    text = re.sub(r' +', ' ', text)
+    
+    # Normalize multiple newlines (keep max 2 consecutive newlines)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # Remove leading/trailing whitespace from each line
+    lines = text.split('\n')
+    lines = [line.strip() for line in lines]
+    text = '\n'.join(lines)
+    
+    # Final trim
+    text = text.strip()
+    
+    return text
+
+
 # =============================================================================
 # TIMING AND PERFORMANCE
 # =============================================================================
