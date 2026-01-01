@@ -15,13 +15,19 @@ from utils import logger
 
 @dataclass
 class EmbeddingConfig:
-    """Configuration for embedding models."""
-    provider: str = "simple"  # simple, sentence-transformers, openai
-    model_name: str = "all-MiniLM-L6-v2"  # for sentence-transformers
+    """Configuration for embedding models.
+    
+    Recommended models for legal/securitization documents:
+    - "all-mpnet-base-v2" (default): High-quality, 768-dim, excellent semantic similarity
+    - "all-MiniLM-L6-v2": Faster, smaller (384-dim), good for speed
+    - For legal-specific: Consider fine-tuned models, but all-mpnet-base-v2 works very well
+    """
+    provider: str = "sentence-transformers"  # simple, sentence-transformers, openai
+    model_name: str = "all-mpnet-base-v2"  # High-quality model, better than MiniLM for semantic similarity
     openai_model: str = "text-embedding-3-small"  # for openai
     api_key: Optional[str] = None
     cache_embeddings: bool = True
-    embedding_dim: int = 384  # dimension for sentence-transformers
+    embedding_dim: int = 768  # Dimension for all-mpnet-base-v2 (384 for MiniLM, 768 for mpnet)
 
 
 class EmbeddingModel(ABC):

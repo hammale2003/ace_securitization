@@ -1151,7 +1151,7 @@ def render_enrichment_mode():
                     # Update config with selected sections, granularity, and batch size
                     st.session_state.enrichment_pipeline.config.extraction_sections = extraction_sections
                     st.session_state.enrichment_pipeline.config.granularity_level = granularity_enum
-                    st.session_state.enrichment_pipeline.config.max_items_per_batch = max_items_per_batch
+                    st.session_state.enrichment_pipeline.config.validator_batch_size = max_items_per_batch
                     
                     document = st.session_state.enrichment_pipeline.document_parser.parse_json_string(json_input)
                     
@@ -1188,7 +1188,7 @@ def render_enrichment_mode():
                 # Update config with selected sections, granularity, and batch size
                 st.session_state.enrichment_pipeline.config.extraction_sections = extraction_sections
                 st.session_state.enrichment_pipeline.config.granularity_level = granularity_enum
-                st.session_state.enrichment_pipeline.config.max_items_per_batch = max_items_per_batch
+                st.session_state.enrichment_pipeline.config.validator_batch_size = max_items_per_batch
                 
                 document = st.session_state.enrichment_pipeline.document_parser.parse_json_string(json_input)
                 

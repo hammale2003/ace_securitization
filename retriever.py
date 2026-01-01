@@ -30,8 +30,8 @@ class RetrieverConfig:
     
     # Embedding configuration
     embedding_provider: str = "sentence-transformers"  
-    embedding_model: str = "all-MiniLM-L6-v2"
-    embedding_dim: int = 256
+    embedding_model: str = "all-mpnet-base-v2"  # High-quality model for better semantic similarity
+    embedding_dim: int = 768  # Dimension for all-mpnet-base-v2
     
     # Index persistence
     index_path: Optional[str] = None  # Path to save/load embeddings
