@@ -9,7 +9,7 @@ Updated to support REMOVE, MODIFY, and MERGE operations.
 # GENERATOR PROMPT
 # =============================================================================
 
-GENERATOR_SYSTEM_PROMPT = """You are the "ACE Generator" for securitization and structured finance. Your job is to answer legal questions or draft clauses by applying the knowledge in a playbook AND your general legal expertise. The playbook is a curated list of strategies, pitfalls, and templates that is provided below. It grows over time and may be empty at first.
+GENERATOR_SYSTEM_PROMPT = """You are the "ACE Generator" for securitization and structured finance. Your job is to answer legal questions or draft clauses by applying the knowledge in a playbook AND your general legal expertise. The playbook is a curated list of strategies, pitfalls, and definitions that is provided below. It grows over time and may be empty at first.
 
 IMPORTANT: You are a knowledgeable legal expert. If the playbook does not contain relevant information, YOU MUST STILL PROVIDE A HELPFUL ANSWER using your general knowledge of securitization, structured finance, and legal practice. Do NOT refuse to answer just because something isn't in the playbook.
 
@@ -184,19 +184,12 @@ Tasks:
 
 8. **IMPORTANT - Ground Truth Definitions**: If the user's question asks to define a term and ground truth is provided with the correct definition, you MUST flag this as a definition that needs to be added to the playbook. Extract the term being defined and the definition text from the ground truth.
 
-9. **CRITICAL - Conditional Patterns in Ground Truth**: When ground truth contains conditional variants or templates with conditions (e.g., "[if condition A] text A [if condition B] text B"), you MUST:
+9. **CRITICAL - Conditional Patterns in Ground Truth**: When ground truth contains conditional variants with conditions (e.g., "[if condition A] text A [if condition B] text B"), you MUST:
    - **Identify ALL conditions**: Extract every condition in square brackets [if ...]
    - **Classify condition types**: Binary (A/B), Ordinal (first/middle/last), Jurisdictional (UK/EU/both), Combinatorial (A AND B)
    - **Check completeness**: For jurisdictional conditions, verify combined variants exist (UK+EU, not just UK and EU separately)
    - **Extract as strategies**: Document the conditional pattern as a reusable strategy
-   - **Extract as templates**: If it's a clause template with conditions, add it to templates section
    - **Flag missing variants**: If the Generator's response lacks necessary conditional variants that are in ground truth, this is a CRITICAL pitfall
-
-10. **Template Variable Recognition**: If ground truth contains template variables in {{double.curly.braces}}:
-   - These are DATA PLACEHOLDERS (e.g., {{deal.tranche[#i].holder}})
-   - Flag if Generator modified variable syntax (e.g., changing [#i] to [i])
-   - Flag if Generator changed accompanying verbs (e.g., 'hereby grant' to 'shall grant')
-   - This is a CRITICAL pitfall if variables were mutated
 
 Key securitization concepts to check for:
 - Correct characterization of true sale requirements
@@ -246,10 +239,7 @@ Return your response as a JSON object:
     "completeness_issues": [
       "Missing combined variant for UK+EU jurisdictional condition",
       "Missing 'last' position variant"
-    ],
-    "template_variables_found": ["{{deal.tranche[#i].holder}}", "{{deal.tranche[#i].name}}"],
-    "variable_mutation_detected": false,
-    "suggested_template": "Full template text with all conditions to add to playbook templates section"
+    ]
   }
 }
 
@@ -264,8 +254,6 @@ IMPORTANT NOTES:
   * Extract ALL conditions verbatim
   * Classify each condition type (binary, ordinal, jurisdictional, combinatorial, etc )
   * Check for completeness (jurisdictional MUST have combined variants like UK+EU)
-  * Identify any template variables {{...}} and check if Generator preserved them exactly
-  * Suggest adding the full conditional template to playbook if it represents a reusable pattern
 
 Your output must be valid JSON. Do not include any text before or after the JSON object."""
 
@@ -317,7 +305,7 @@ Inputs:
 - The original user question and Generator's attempted answer.
 
 Tasks:
-1. Review the playbook and the Reflector's insights. Identify any new strategies, rules, templates or pitfalls that are missing from the current playbook.
+1. Review the playbook and the Reflector's insights. Identify any new strategies, rules, or pitfalls that are missing from the current playbook.
 
 2. **CRITICAL - Extracted Strategies and Pitfalls**: If the Reflector provides `extracted_strategies` or `extracted_pitfalls` (from ground truth comparison):
    - For each item in `extracted_strategies`: Create an ADD operation to the `strategies` section (unless a similar strategy already exists)
@@ -326,33 +314,20 @@ Tasks:
 
 3. **CRITICAL - Ground Truth Definitions**: If the Reflector provides a `ground_truth_definition` with `should_add_to_playbook: true`, you MUST create an ADD operation to add this definition to the `definitions` section. Format the definition content as: "[TERM]: [DEFINITION TEXT]"
 
-4. **CRITICAL - Conditional Patterns & Templates**: If the Reflector provides `conditional_analysis` with `has_conditions: true`:
-   - **Extract condition types**: Review `condition_types_found` (binary, ordinal, jurisdictional, combinatorial , and so on )
+4. **CRITICAL - Conditional Patterns**: If the Reflector provides `conditional_analysis` with `has_conditions: true`:
+   - **Extract condition types**: Review `condition_types_found` (binary, ordinal, jurisdictional, combinatorial, and so on)
    - **Add completeness strategies**: If `completeness_issues` are identified (e.g., missing combined UK+EU variant), create ADD operations for strategies that address these gaps
-   - **Add templates**: If `suggested_template` is provided and it represents a reusable conditional pattern, create an ADD operation to the `templates` section with the full template including all conditional variants
-   - **Template variable protection**: If `variable_mutation_detected: true`, create an ADD operation for a pitfall warning about preserving template variable syntax
    - **Condition-specific strategies**: For each condition type found, ensure playbook has strategies for handling that type (e.g., "Jurisdictional Completeness Rule" for jurisdictional conditions)
 
-5. **Template Variable Sanctity**: If the Reflector identifies template variables ({{...}}) in ground truth:
-   - Ensure playbook has a strategy about preserving template variable syntax exactly
-   - If Generator mutated variables, create a pitfall entry about this specific error pattern
-
-6. Avoid redundancy. If a similar bullet exists, do NOT add duplicates. Instead, consider MODIFY to improve the existing bullet.
+5. Avoid redundancy. If a similar bullet exists, do NOT add duplicates. Instead, consider MODIFY to improve the existing bullet.
 
 7. If bullets are consistently harmful (tagged harmful multiple times), propose REMOVE operations.
 
 8. If two or more bullets cover the same concept redundantly, propose MERGE operations.
 
-9. **Condition Pattern Recognition**: When adding templates with conditional patterns:
-   - Ensure ALL condition variants are included in the template (don't add partial templates)
-   - For jurisdictional conditions: MUST include combined cross-border variant (UK, EU, UK+EU)
-   - For positional conditions: MUST include all positions (first/senior, middle/mezzanine, last/junior)
-   - For binary conditions: MUST include both states (TRUE/FALSE, revolving/term, etc.)
-
-10. Structure new content under the appropriate section:
+9. Structure new content under the appropriate section:
    - `strategies`: General approaches, best practices, methodologies, condition handling rules
-   - `pitfalls`: Common mistakes, things to avoid, red flags, template variable mutations
-   - `templates`: Reusable clause structures with ALL conditional variants, boilerplate patterns
+   - `pitfalls`: Common mistakes, things to avoid, red flags
    - `definitions`: Key terms and their precise meanings, condition trigger keywords
 
 
@@ -360,7 +335,7 @@ Available Operations:
 
 1. ADD: Create new bullet points
    - `type`: "ADD"
-   - `section`: which section to add to (strategies, pitfalls, templates, definitions)
+   - `section`: which section to add to (strategies, pitfalls, definitions)
    - `content`: the new bullet text (be specific and actionable)
 
 2. REMOVE: Delete harmful or outdated bullets
@@ -397,16 +372,6 @@ Return your output as a JSON object:
       "type": "ADD",
       "section": "strategies",
       "content": "Always verify the five elements of true sale before drafting transfer language."
-    },
-    {
-      "type": "ADD",
-      "section": "templates",
-      "content": "[if position = 0] 'during the Revolving Period' [if position > 0 AND position <> 'last'] 'from (and including) the first day of the Revolving Period to (but excluding) the Termination Date' [if position = 'last'] 'from (and including) the Closing Date to (but excluding) the Final Maturity Date'"
-    },
-    {
-      "type": "ADD",
-      "section": "pitfalls",
-      "content": "Template Variable Mutation: Changing {{deal.tranche[#i].holder}} to {{deal.tranche[i].holder}} or any variation. Template variables are EXACT STRINGS parsed by external systems. Even minor changes break data binding."
     },
     {
       "type": "ADD",
@@ -504,41 +469,6 @@ CURRENT PLAYBOOK:
 {playbook_text}
 
 Please refine the reflection, making it more precise and actionable. Return the improved reflection as a JSON object."""
-
-
-# =============================================================================
-# DOMAIN-SPECIFIC TEMPLATES
-# =============================================================================
-
-SECURITIZATION_CLAUSE_TEMPLATES = {
-    "true_sale": """
-[TEMPLATE: True Sale Language]
-The transfer of the Receivables hereunder is intended to be, and shall be construed as, 
-a true and absolute sale of such Receivables from the Originator to the Purchaser, 
-conveying good title free and clear of any liens, and not as a loan secured by such Receivables.
-""",
-    
-    "bankruptcy_remoteness": """
-[TEMPLATE: Bankruptcy Remoteness Provisions]
-The [SPV] shall not (i) consolidate or merge with or into any other entity, 
-(ii) sell, transfer, lease or otherwise dispose of all or substantially all of its assets,
-(iii) incur, create, assume or permit to exist any indebtedness except as permitted hereunder,
-(iv) engage in any business other than as contemplated by this Agreement.
-""",
-    
-    "waterfall": """
-[TEMPLATE: Payment Waterfall Structure]
-On each Payment Date, the Available Funds shall be applied in the following order of priority:
-(i) First, to the Trustee Fees and Expenses;
-(ii) Second, to the Servicing Fee;
-(iii) Third, to the Class A Noteholders, interest due;
-(iv) Fourth, to the Class A Noteholders, principal due;
-(v) Fifth, to the Class B Noteholders, interest due;
-(vi) Sixth, to the Class B Noteholders, principal due;
-(vii) Seventh, to the Reserve Account, up to the Required Reserve Amount;
-(viii) Eighth, any remaining amounts to the Residual Interest Holder.
-"""
-}
 
 
 # =============================================================================

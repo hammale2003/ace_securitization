@@ -191,18 +191,21 @@ class CuratorAgent:
                         continue
                     
                     elif redundancy_decision.action == "MODIFY" and redundancy_decision.target_bullet_id:
+                        # Build update_reason for auto-upgrade
+                        update_reason = f"Auto-upgrade: {redundancy_decision.reason}"
                         operation = CuratorOperation(
                             type="MODIFY",
                             section=section,
                             bullet_id=redundancy_decision.target_bullet_id,
                             new_content=content,
-                            reason=f"Auto-upgrade: {redundancy_decision.reason}",
+                            reason=update_reason,
                             reset_harmful=False
                         )
                         operations.append(operation)
                         modified_bullet_ids.append(redundancy_decision.target_bullet_id)
                         audit_entry["curator_action"] = "MODIFY"
                         audit_entry["curator_reason"] = redundancy_decision.reason
+                        audit_entry["update_reason"] = update_reason
                         audit_entry["target_bullet_id"] = redundancy_decision.target_bullet_id
                         audit_entry["redundancy_similarity"] = redundancy_decision.similarity
                         audit_log.append(audit_entry)
@@ -257,19 +260,48 @@ class CuratorAgent:
                     audit_log.append(audit_entry)
                     continue
                 
+                # CRITICAL: For MODIFY, enriched_content should be provided. If not, use content but log warning
+                if not validator_output.enriched_content:
+                    logger.warning(f"MODIFY recommendation for bullet {bullet_id} but no enriched_content provided. Using original content.")
+                    audit_entry["warning"] = "MODIFY without enriched_content - using original content"
+                
+                # Verify that the new content is actually different from existing
+                existing_bullet = playbook.get_bullet_by_id(bullet_id)
+                if existing_bullet:
+                    from playbook_enricher.redundancy import normalize_text
+                    existing_normalized = normalize_text(existing_bullet.content)
+                    new_normalized = normalize_text(content)
+                    
+                    if existing_normalized == new_normalized:
+                        logger.warning(f"MODIFY requested for bullet {bullet_id} but content is identical. Skipping.")
+                        operation = CuratorOperation(
+                            type="SKIP",
+                            section=section,
+                            reason="MODIFY requested but new content is identical to existing"
+                        )
+                        operations.append(operation)
+                        skipped_count += 1
+                        audit_entry["curator_action"] = "SKIP"
+                        audit_entry["curator_reason"] = operation.reason
+                        audit_log.append(audit_entry)
+                        continue
+                
                 operation = CuratorOperation(
                     type="MODIFY",
                     section=section,
                     bullet_id=bullet_id,
                     new_content=content,
-                    reason=f"Validator recommendation: {validator_output.reasoning}",
+                    reason=validator_output.update_reason or f"Validator recommendation: {validator_output.reasoning}",
                     reset_harmful=False
                 )
                 operations.append(operation)
                 modified_bullet_ids.append(bullet_id)
                 audit_entry["curator_action"] = "MODIFY"
                 audit_entry["curator_reason"] = operation.reason
+                audit_entry["update_reason"] = validator_output.update_reason
                 audit_entry["target_bullet_id"] = bullet_id
+                audit_entry["existing_content_preview"] = existing_bullet.content[:100] if existing_bullet else None
+                audit_entry["new_content_preview"] = content[:100]
                 audit_log.append(audit_entry)
         
         return CuratorResult(
@@ -308,20 +340,52 @@ class CuratorAgent:
             
             elif op.type == "MODIFY":
                 if op.bullet_id and op.new_content:
-                    playbook.modify_bullet(
+                    # Get existing bullet to verify it exists
+                    existing_bullet = playbook.get_bullet_by_id(op.bullet_id)
+                    if not existing_bullet:
+                        logger.error(f"MODIFY operation failed: bullet {op.bullet_id} not found in playbook")
+                        skipped_count += 1
+                        continue
+                    
+                    # Log before modification
+                    logger.info(f"Modifying bullet {op.bullet_id} in section {op.section}")
+                    logger.debug(f"  Existing content: {existing_bullet.content[:150]}...")
+                    logger.debug(f"  New content: {op.new_content[:150]}...")
+                    logger.debug(f"  Reason: {op.reason}")
+                    
+                    # Apply modification
+                    modified_bullet = playbook.modify_bullet(
                         op.bullet_id,
                         op.new_content,
                         op.reason,
                         op.reset_harmful
                     )
-                    modified_bullet_ids.append(op.bullet_id)
-                    logger.debug(f"Modified bullet {op.bullet_id}: {op.reason}")
                     
-                    # Update retriever if available
-                    if retriever:
-                        section = self._find_bullet_section(playbook, op.bullet_id)
-                        if section:
-                            retriever.update_bullet(op.bullet_id, op.new_content)
+                    if modified_bullet:
+                        modified_bullet_ids.append(op.bullet_id)
+                        logger.info(f"Successfully modified bullet {op.bullet_id} (revision {modified_bullet.revision_count})")
+                        
+                        # Verify the modification was applied
+                        verify_bullet = playbook.get_bullet_by_id(op.bullet_id)
+                        if verify_bullet and verify_bullet.content == op.new_content.strip():
+                            logger.debug(f"Verification: bullet {op.bullet_id} content updated correctly")
+                        else:
+                            logger.error(f"VERIFICATION FAILED: bullet {op.bullet_id} content was not updated correctly!")
+                            logger.error(f"  Expected: {op.new_content[:150]}...")
+                            logger.error(f"  Actual: {verify_bullet.content[:150] if verify_bullet else 'BULLET NOT FOUND'}...")
+                        
+                        # Update retriever if available
+                        if retriever:
+                            section = self._find_bullet_section(playbook, op.bullet_id)
+                            if section:
+                                retriever.update_bullet(op.bullet_id, op.new_content)
+                                logger.debug(f"Updated retriever index for bullet {op.bullet_id}")
+                    else:
+                        logger.error(f"MODIFY operation failed: modify_bullet returned None for {op.bullet_id}")
+                        skipped_count += 1
+                else:
+                    logger.error(f"MODIFY operation skipped: missing bullet_id or new_content")
+                    skipped_count += 1
             
             elif op.type == "SKIP":
                 skipped_count += 1
@@ -388,7 +452,7 @@ class CuratorAgent:
     
     def _find_bullet_section(self, playbook: Playbook, bullet_id: str) -> Optional[str]:
         """Find which section a bullet belongs to."""
-        for section_name in ["strategies", "pitfalls", "templates", "definitions"]:
+        for section_name in ["strategies", "pitfalls", "definitions"]:
             section_bullets = playbook.get_section(section_name)
             for bullet in section_bullets:
                 if bullet.id == bullet_id:

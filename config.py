@@ -99,8 +99,7 @@ class ACEConfig:
 # Playbook section names
 PLAYBOOK_SECTIONS = [
     "strategies",
-    "pitfalls", 
-    "templates",
+    "pitfalls",
     "definitions"
 ]
 
@@ -108,7 +107,6 @@ PLAYBOOK_SECTIONS = [
 SECTION_PREFIXES = {
     "strategies": "str",
     "pitfalls": "pit",
-    "templates": "tmp",
     "definitions": "def"
 }
 

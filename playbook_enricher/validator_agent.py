@@ -29,6 +29,7 @@ class ValidatorOutput:
     reusability_score: float
     recommendation: str  # ADD, SKIP, MODIFY
     reasoning: str
+    update_reason: Optional[str] = None  # Specific reason for MODIFY (why the bullet is being modified)
 
 
 class ValidatorAgent:
@@ -115,6 +116,11 @@ SCORING:
 RECOMMENDATIONS:
 - ADD: Valid, reusable, and should be added (use enriched_content if provided, otherwise original)
 - MODIFY: Duplicate found but new item is MORE PRECISE/COMPLETE (include bullet_id in similar_bullets)
+  * CRITICAL: When recommending MODIFY, you MUST provide enriched_content with the improved/complete version
+  * enriched_content should be the BETTER version that will replace the existing bullet
+  * If the new content is not significantly better, recommend SKIP instead
+  * Example: If existing bullet is incomplete or has errors, provide enriched_content with the complete/corrected version
+  * CRITICAL: You MUST provide "update_reason" explaining WHY this modification improves the bullet
 - SKIP: Generic, duplicate with same/better quality, wrong section, or not fixable
 
 Return JSON:
@@ -128,7 +134,8 @@ Return JSON:
   "specificity_score": 0.90,
   "reusability_score": 0.80,
   "recommendation": "ADD",
-  "reasoning": "Brief explanation"
+  "reasoning": "Brief explanation",
+  "update_reason": "For MODIFY only: specific reason why the bullet is being updated (e.g., 'Added missing clause references', 'Completed incomplete definition', 'Fixed formatting errors')"
 }"""
 
     def __init__(self, llm_client: LLMClient, retriever: Optional[PlaybookRetriever] = None):
@@ -249,7 +256,8 @@ Return JSON array with one object per item:
     "specificity_score": 0.90,
     "reusability_score": 0.80,
     "recommendation": "ADD",
-    "reasoning": "Brief explanation"
+    "reasoning": "Brief explanation",
+    "update_reason": "For MODIFY only: specific reason why the bullet is being updated"
   }},
   ...
 ]
@@ -295,7 +303,8 @@ REMEMBER:
                             specificity_score=result.get("specificity_score", 0.0),
                             reusability_score=result.get("reusability_score", 0.0),
                             recommendation=result.get("recommendation", "SKIP"),
-                            reasoning=result.get("reasoning", "")
+                            reasoning=result.get("reasoning", ""),
+                            update_reason=result.get("update_reason")
                         ))
                     else:
                         logger.warning(f"Item {idx+1} result is not a dict: {type(result)}")
@@ -354,7 +363,8 @@ Validate and provide recommendation."""
                         specificity_score=parsed.get("specificity_score", 0.0),
                         reusability_score=parsed.get("reusability_score", 0.0),
                         recommendation=parsed.get("recommendation", "SKIP"),
-                        reasoning=parsed.get("reasoning", "")
+                        reasoning=parsed.get("reasoning", ""),
+                        update_reason=parsed.get("update_reason")
                     ))
                 else:
                     results.append(self._create_skip_output("Parsing error"))

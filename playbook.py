@@ -32,9 +32,14 @@ class Bullet:
     archived_at: Optional[str] = None
     archive_reason: Optional[str] = None
     merged_from: Optional[List[str]] = None  # IDs of bullets merged into this one
+    update_reason: Optional[str] = None  # Reason for the last modification (set only when ACET modifies a bullet)
     
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        result = asdict(self)
+        # Only include update_reason when the bullet has been modified
+        if result.get("update_reason") is None:
+            del result["update_reason"]
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Bullet":
@@ -44,7 +49,8 @@ class Bullet:
             "archived": False,
             "archived_at": None,
             "archive_reason": None,
-            "merged_from": None
+            "merged_from": None,
+            "update_reason": None
         }
         for key, default in defaults.items():
             if key not in data:
@@ -222,6 +228,7 @@ class Playbook:
         bullet.content = clean_text_content(new_content)
         bullet.updated_at = datetime.utcnow().isoformat()
         bullet.revision_count += 1
+        bullet.update_reason = reason  # Store the reason for this modification
         
         if reset_harmful:
             bullet.harmful_count = 0

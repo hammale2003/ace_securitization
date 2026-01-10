@@ -24,7 +24,7 @@ class EnrichmentConfig:
     """Configuration for enrichment pipeline."""
     granularity_level: GranularityLevel = GranularityLevel.OPERATIVE_CLAUSE_BY_CLAUSE
     llm_config: Optional[LLMConfig] = None
-    extraction_sections: List[str] = field(default_factory=lambda: ["strategies", "pitfalls", "templates", "definitions"])
+    extraction_sections: List[str] = field(default_factory=lambda: ["strategies", "pitfalls", "definitions"])
     # Redundancy control: prevent duplicates, and upgrade existing bullets when better content arrives
     dedupe_enabled: bool = True
     dedupe_similarity_threshold: float = 0.86
@@ -133,7 +133,8 @@ class EnrichmentPipeline:
         extracted_items = self.extractor.extract_from_document(
             document=document,
             granularity_level=self.config.granularity_level,
-            allowed_sections=self.config.extraction_sections
+            allowed_sections=self.config.extraction_sections,
+            playbook=playbook
         )
         
         # Filter: Keep only items that match selected sections (double-check)
@@ -235,10 +236,13 @@ class EnrichmentPipeline:
         logger.info("Preview mode: extracting sample items")
         logger.info(f"Using extraction sections: {', '.join(self.config.extraction_sections)}")
         
+        playbook = self.playbook_manager.get_playbook()
+        
         extracted_items = self.extractor.extract_from_document(
             document=document,
             granularity_level=self.config.granularity_level,
-            allowed_sections=self.config.extraction_sections
+            allowed_sections=self.config.extraction_sections,
+            playbook=playbook
         )
         
         preview_items = []

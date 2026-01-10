@@ -858,12 +858,11 @@ def render_playbook_view():
     stats = playbook.get_stats()
     
     # Stats
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total", stats.get("total_bullets", 0))
     col2.metric("Strategies", stats.get("sections", {}).get("strategies", 0))
     col3.metric("Pitfalls", stats.get("sections", {}).get("pitfalls", 0))
-    col4.metric("Templates", stats.get("sections", {}).get("templates", 0))
-    col5.metric("Archived", stats.get("archived_count", 0))
+    col4.metric("Archived", stats.get("archived_count", 0))
     
     # Sections
     sections = ["strategies", "pitfalls", "templates", "definitions"]
@@ -1032,15 +1031,13 @@ def render_enrichment_mode():
     st.markdown("**Target Sections:**")
     st.caption("Select which types of knowledge to extract from the document")
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         extract_strategies = st.checkbox("Strategies", value=True, help="Best practices and methodologies")
     with col2:
         extract_pitfalls = st.checkbox("Pitfalls", value=True, help="Common mistakes to avoid")
     with col3:
-        extract_templates = st.checkbox("Templates", value=True, help="Reusable clause patterns")
-    with col4:
         extract_definitions = st.checkbox("Definitions", value=True, help="Key legal terms")
     
     # Build extraction sections list
@@ -1049,8 +1046,6 @@ def render_enrichment_mode():
         extraction_sections.append("strategies")
     if extract_pitfalls:
         extraction_sections.append("pitfalls")
-    if extract_templates:
-        extraction_sections.append("templates")
     if extract_definitions:
         extraction_sections.append("definitions")
     

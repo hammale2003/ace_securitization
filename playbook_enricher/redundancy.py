@@ -319,9 +319,9 @@ def decide_add_vs_skip_or_modify(
                 )
     
     if embedding_model is not None:
-        strategy_similarity_threshold = 0.60  # Embeddings are very robust, lower threshold to catch more semantic duplicates
+        strategy_similarity_threshold = 0.40  # Lower threshold to catch more semantic duplicates with embeddings
     else:
-        strategy_similarity_threshold = 0.82  # Word-overlap needs higher threshold
+        strategy_similarity_threshold = 0.70  # Word-overlap fallback
     
     if section == "strategies":
         best_strategy: Optional[Bullet] = None
@@ -404,10 +404,15 @@ def decide_add_vs_skip_or_modify(
         return RedundancyDecision(action="ADD", reason="No similar bullets found")
 
     # If similarity is high enough, treat as redundant unless this is a clear upgrade.
-    # For strategies with embeddings, use a slightly lower threshold in the general check too
+    # Use lower thresholds with embeddings to catch more semantic duplicates
     effective_threshold = duplicate_similarity_threshold
-    if section == "strategies" and embedding_model is not None:
-        effective_threshold = min(duplicate_similarity_threshold, 0.75)  # More aggressive for strategies with embeddings
+    if embedding_model is not None:
+        if section == "strategies":
+            effective_threshold = 0.40  # Very aggressive for strategies
+        elif section == "pitfalls":
+            effective_threshold = 0.50  # Aggressive for pitfalls
+        elif section == "definitions":
+            effective_threshold = 0.60  # Moderate for definitions (need more precision)
     
     logger.info(f"General similarity check for {section}: sim={best_sim:.3f}, threshold={effective_threshold:.3f}, bullet_id={best_bullet.id}")
     logger.debug(f"  Existing: {best_bullet.content[:150]}...")
