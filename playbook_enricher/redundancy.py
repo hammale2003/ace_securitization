@@ -294,7 +294,7 @@ def decide_add_vs_skip_or_modify(
                     return RedundancyDecision(
                         action="MODIFY",
                         target_bullet_id=best_existing.id,
-                        reason=f'Upgrade definition for term "{term}" (pointer → substantive)',
+                        reason=f'Replaced pointer definition with complete substantive definition for term "{term}"',
                         similarity=sim,
                     )
 
@@ -305,10 +305,11 @@ def decide_add_vs_skip_or_modify(
                     logger.info(f"MODIFY definition bullet {best_existing.id} for term '{term}': quality {old_q:.2f} → {new_q:.2f} (sim={sim:.3f})")
                     logger.info(f"  Existing: {best_existing.content[:100]}...")
                     logger.info(f"  New: {new_content[:100]}...")
+                    # Generic reason - LLM (Validator) will provide detailed reason
                     return RedundancyDecision(
                         action="MODIFY",
                         target_bullet_id=best_existing.id,
-                        reason=f'Upgrade definition for term "{term}" (quality {old_q:.2f} → {new_q:.2f})',
+                        reason="Improved content quality",
                         similarity=sim,
                     )
                 return RedundancyDecision(
@@ -362,10 +363,11 @@ def decide_add_vs_skip_or_modify(
                 logger.info(f"MODIFY strategy bullet {best_strategy.id}: similarity={best_strategy_sim:.3f}, quality {old_q:.2f} → {new_q:.2f}")
                 logger.info(f"  Existing: {best_strategy.content[:100]}...")
                 logger.info(f"  New: {new_content[:100]}...")
+                # Generic reason - LLM (Validator) will provide detailed reason
                 return RedundancyDecision(
                     action="MODIFY",
                     target_bullet_id=best_strategy.id,
-                    reason=f'Upgrade strategy (quality {old_q:.2f} → {new_q:.2f}, sim={best_strategy_sim:.2f})',
+                    reason="Improved content quality",
                     similarity=best_strategy_sim,
                 )
             logger.info(f"SKIP strategy bullet {best_strategy.id}: similarity={best_strategy_sim:.3f} (existing quality {old_q:.2f} >= new {new_q:.2f})")
@@ -408,9 +410,9 @@ def decide_add_vs_skip_or_modify(
     effective_threshold = duplicate_similarity_threshold
     if embedding_model is not None:
         if section == "strategies":
-            effective_threshold = 0.40  # Very aggressive for strategies
+            effective_threshold = 0.60  # Very aggressive for strategies
         elif section == "pitfalls":
-            effective_threshold = 0.50  # Aggressive for pitfalls
+            effective_threshold = 0.60  # Aggressive for pitfalls
         elif section == "definitions":
             effective_threshold = 0.60  # Moderate for definitions (need more precision)
     
@@ -425,10 +427,11 @@ def decide_add_vs_skip_or_modify(
             logger.info(f"MODIFY {section} bullet {best_bullet.id}: similarity={best_sim:.3f}, quality {old_q:.2f} → {new_q:.2f}")
             logger.info(f"  Existing: {best_bullet.content[:100]}...")
             logger.info(f"  New: {new_content[:100]}...")
+            # Generic reason - LLM (Validator) will provide detailed reason
             return RedundancyDecision(
                 action="MODIFY",
                 target_bullet_id=best_bullet.id,
-                reason=f"Upgrade near-duplicate (quality {old_q:.2f} → {new_q:.2f}, sim={best_sim:.2f})",
+                reason="Improved content quality",
                 similarity=best_sim,
             )
         logger.info(f"SKIP {section} bullet {best_bullet.id}: similarity={best_sim:.3f} (existing quality {old_q:.2f} >= new {new_q:.2f})")

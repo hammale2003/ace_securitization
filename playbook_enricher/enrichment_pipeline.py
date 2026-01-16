@@ -108,7 +108,8 @@ class EnrichmentPipeline:
             dedupe_similarity_threshold=config.dedupe_similarity_threshold,
             upgrade_similarity_threshold=config.upgrade_similarity_threshold,
             upgrade_margin=config.upgrade_margin,
-            retriever=self.retriever
+            retriever=self.retriever,
+            validator_agent=self.validator
         )
     
     def run_from_file(self, file_path: str) -> EnrichmentResult:

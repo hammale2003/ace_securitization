@@ -858,14 +858,13 @@ def render_playbook_view():
     stats = playbook.get_stats()
     
     # Stats
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     col1.metric("Total", stats.get("total_bullets", 0))
     col2.metric("Strategies", stats.get("sections", {}).get("strategies", 0))
     col3.metric("Pitfalls", stats.get("sections", {}).get("pitfalls", 0))
-    col4.metric("Archived", stats.get("archived_count", 0))
     
     # Sections
-    sections = ["strategies", "pitfalls", "templates", "definitions"]
+    sections = ["strategies", "pitfalls", "definitions"]
     
     for section in sections:
         bullets = playbook.get_section(section)

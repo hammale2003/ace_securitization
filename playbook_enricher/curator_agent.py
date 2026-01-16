@@ -52,7 +52,8 @@ class CuratorAgent:
         dedupe_similarity_threshold: float = 0.86,
         upgrade_similarity_threshold: float = 0.78,
         upgrade_margin: float = 0.08,
-        retriever=None
+        retriever=None,
+        validator_agent=None
     ):
         """
         Initialize Curator Agent.
@@ -69,6 +70,7 @@ class CuratorAgent:
         self.upgrade_similarity_threshold = upgrade_similarity_threshold
         self.upgrade_margin = upgrade_margin
         self.retriever = retriever
+        self.validator_agent = validator_agent
     
     def apply_recommendations(
         self,
@@ -191,8 +193,73 @@ class CuratorAgent:
                         continue
                     
                     elif redundancy_decision.action == "MODIFY" and redundancy_decision.target_bullet_id:
-                        # Build update_reason for auto-upgrade
-                        update_reason = f"Auto-upgrade: {redundancy_decision.reason}"
+                        # ALWAYS ask LLM (Validator) to generate a clear reason for the modification
+                        # Never use generic reasons - the LLM must provide the reason
+                        if not self.validator_agent:
+                            logger.error("Cannot generate update_reason: validator_agent not available. Skipping MODIFY.")
+                            operation = CuratorOperation(
+                                type="SKIP",
+                                section=section,
+                                reason="MODIFY requires validator_agent to generate update_reason"
+                            )
+                            operations.append(operation)
+                            skipped_count += 1
+                            audit_entry["curator_action"] = "SKIP"
+                            audit_entry["curator_reason"] = operation.reason
+                            audit_log.append(audit_entry)
+                            continue
+                        
+                        try:
+                            existing_bullet = playbook.get_bullet_by_id(redundancy_decision.target_bullet_id)
+                            if not existing_bullet:
+                                logger.error(f"Bullet {redundancy_decision.target_bullet_id} not found. Skipping MODIFY.")
+                                operation = CuratorOperation(
+                                    type="SKIP",
+                                    section=section,
+                                    reason=f"Target bullet {redundancy_decision.target_bullet_id} not found"
+                                )
+                                operations.append(operation)
+                                skipped_count += 1
+                                audit_entry["curator_action"] = "SKIP"
+                                audit_entry["curator_reason"] = operation.reason
+                                audit_log.append(audit_entry)
+                                continue
+                            
+                            # Ask Validator to generate update_reason for this modification
+                            update_reason = self.validator_agent.generate_update_reason(
+                                existing_content=existing_bullet.content,
+                                new_content=content,
+                                section=section
+                            )
+                            
+                            if not update_reason or update_reason == "Improved content quality":
+                                logger.error(f"LLM failed to generate proper update_reason. Got: {update_reason}. Skipping MODIFY.")
+                                operation = CuratorOperation(
+                                    type="SKIP",
+                                    section=section,
+                                    reason="LLM failed to generate valid update_reason"
+                                )
+                                operations.append(operation)
+                                skipped_count += 1
+                                audit_entry["curator_action"] = "SKIP"
+                                audit_entry["curator_reason"] = operation.reason
+                                audit_log.append(audit_entry)
+                                continue
+                                
+                        except Exception as e:
+                            logger.error(f"Failed to get LLM-generated reason for auto-upgrade: {e}. Skipping MODIFY.")
+                            operation = CuratorOperation(
+                                type="SKIP",
+                                section=section,
+                                reason=f"Failed to generate update_reason: {str(e)}"
+                            )
+                            operations.append(operation)
+                            skipped_count += 1
+                            audit_entry["curator_action"] = "SKIP"
+                            audit_entry["curator_reason"] = operation.reason
+                            audit_log.append(audit_entry)
+                            continue
+                        
                         operation = CuratorOperation(
                             type="MODIFY",
                             section=section,
@@ -286,12 +353,28 @@ class CuratorAgent:
                         audit_log.append(audit_entry)
                         continue
                 
+                # Ensure update_reason is provided and not generic
+                update_reason = validator_output.update_reason
+                if not update_reason or update_reason.lower() == "improved content quality":
+                    logger.error(f"Validator recommended MODIFY but provided invalid/generic update_reason: '{update_reason}'. Skipping.")
+                    operation = CuratorOperation(
+                        type="SKIP",
+                        section=section,
+                        reason=f"Validator provided invalid/generic update_reason: '{update_reason}'"
+                    )
+                    operations.append(operation)
+                    skipped_count += 1
+                    audit_entry["curator_action"] = "SKIP"
+                    audit_entry["curator_reason"] = operation.reason
+                    audit_log.append(audit_entry)
+                    continue
+                
                 operation = CuratorOperation(
                     type="MODIFY",
                     section=section,
                     bullet_id=bullet_id,
                     new_content=content,
-                    reason=validator_output.update_reason or f"Validator recommendation: {validator_output.reasoning}",
+                    reason=update_reason,
                     reset_harmful=False
                 )
                 operations.append(operation)
@@ -363,7 +446,7 @@ class CuratorAgent:
                     
                     if modified_bullet:
                         modified_bullet_ids.append(op.bullet_id)
-                        logger.info(f"Successfully modified bullet {op.bullet_id} (revision {modified_bullet.revision_count})")
+                        logger.info(f"Successfully modified bullet {op.bullet_id}")
                         
                         # Verify the modification was applied
                         verify_bullet = playbook.get_bullet_by_id(op.bullet_id)

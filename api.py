@@ -698,8 +698,7 @@ async def get_enrichment_stats():
     
     return {
         "total_bullets": stats.get("total_bullets", 0),
-        "sections": stats.get("sections", {}),
-        "archived_count": stats.get("archived_count", 0)
+        "sections": stats.get("sections", {})
     }
 
 

@@ -120,7 +120,11 @@ RECOMMENDATIONS:
   * enriched_content should be the BETTER version that will replace the existing bullet
   * If the new content is not significantly better, recommend SKIP instead
   * Example: If existing bullet is incomplete or has errors, provide enriched_content with the complete/corrected version
-  * CRITICAL: You MUST provide "update_reason" explaining WHY this modification improves the bullet
+  * CRITICAL: You MUST ALWAYS provide "update_reason" when recommendation is MODIFY
+  * update_reason is MANDATORY for MODIFY - never leave it null or empty
+  * update_reason must be CLEAR TEXT describing the improvement (e.g., "Added missing key clause references", "Completed incomplete definition with full substantive content", "Fixed formatting errors and improved clarity")
+  * DO NOT include scores, numbers, or technical metrics in update_reason - use plain descriptive text
+  * NEVER use generic phrases like "Improved content quality" - be specific about what was improved
 - SKIP: Generic, duplicate with same/better quality, wrong section, or not fixable
 
 Return JSON:
@@ -135,7 +139,7 @@ Return JSON:
   "reusability_score": 0.80,
   "recommendation": "ADD",
   "reasoning": "Brief explanation",
-  "update_reason": "For MODIFY only: specific reason why the bullet is being updated (e.g., 'Added missing clause references', 'Completed incomplete definition', 'Fixed formatting errors')"
+    "update_reason": "MANDATORY for MODIFY: clear text explanation of why the bullet is being updated. Use descriptive language (e.g., 'Added missing key clause references', 'Completed incomplete definition with full substantive content', 'Fixed formatting errors and improved clarity'). DO NOT include scores, numbers, or technical metrics. NEVER use generic phrases like 'Improved content quality' - be specific."
 }"""
 
     def __init__(self, llm_client: LLMClient, retriever: Optional[PlaybookRetriever] = None):
@@ -257,7 +261,7 @@ Return JSON array with one object per item:
     "reusability_score": 0.80,
     "recommendation": "ADD",
     "reasoning": "Brief explanation",
-    "update_reason": "For MODIFY only: specific reason why the bullet is being updated"
+    "update_reason": "MANDATORY for MODIFY: clear text explanation of why the bullet is being updated. Use descriptive language describing the improvement. DO NOT include scores, numbers, or technical metrics. NEVER use generic phrases like 'Improved content quality' - be specific."
   }},
   ...
 ]
@@ -407,4 +411,57 @@ Validate and provide recommendation."""
             recommendation="SKIP",
             reasoning=reason
         )
+    
+    def generate_update_reason(
+        self,
+        existing_content: str,
+        new_content: str,
+        section: str
+    ) -> str:
+        """
+        Generate a clear text reason for modifying a bullet.
+        
+        Args:
+            existing_content: Current bullet content
+            new_content: New improved content
+            section: Section name (strategies, pitfalls, definitions, etc.)
+        
+        Returns:
+            Clear text reason explaining why the modification improves the bullet
+        """
+        prompt = f"""You are analyzing a modification to a {section} entry in a securitization playbook.
+
+EXISTING CONTENT:
+{existing_content}
+
+NEW CONTENT:
+{new_content}
+
+Generate a CLEAR, DESCRIPTIVE text explanation of why this modification improves the bullet. 
+- Use plain descriptive language
+- DO NOT include scores, numbers, or technical metrics
+- Focus on what was improved (e.g., "Added missing key clause references", "Completed incomplete definition with full substantive content", "Enhanced with more comprehensive guidance")
+- Be specific about what makes the new content better
+
+Return ONLY the reason text, nothing else."""
+
+        try:
+            response = self.llm_client.generate(
+                system_prompt="You are a helpful assistant that generates clear, descriptive explanations for playbook modifications.",
+                user_message=prompt,
+                temperature=0.3
+            )
+            reason = response.strip()
+            # Remove quotes if present
+            if reason.startswith('"') and reason.endswith('"'):
+                reason = reason[1:-1]
+            if reason.startswith("'") and reason.endswith("'"):
+                reason = reason[1:-1]
+            # Never return generic reason - raise error if LLM didn't provide a proper reason
+            if not reason or reason.lower() == "improved content quality":
+                raise ValueError(f"LLM returned invalid/generic reason: '{reason}'. Must provide specific descriptive reason.")
+            return reason
+        except Exception as e:
+            logger.error(f"Failed to generate update reason from LLM: {e}")
+            raise  # Re-raise to let caller handle - never return generic reason
 

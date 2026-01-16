@@ -27,11 +27,6 @@ class Bullet:
     neutral_count: int = 0
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    revision_count: int = 0  # Track number of modifications
-    archived: bool = False
-    archived_at: Optional[str] = None
-    archive_reason: Optional[str] = None
-    merged_from: Optional[List[str]] = None  # IDs of bullets merged into this one
     update_reason: Optional[str] = None  # Reason for the last modification (set only when ACET modifies a bullet)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -43,18 +38,14 @@ class Bullet:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Bullet":
-        # Handle older data without new fields
-        defaults = {
-            "revision_count": 0,
-            "archived": False,
-            "archived_at": None,
-            "archive_reason": None,
-            "merged_from": None,
-            "update_reason": None
-        }
-        for key, default in defaults.items():
-            if key not in data:
-                data[key] = default
+        # Remove unwanted fields if they exist in old data
+        unwanted_fields = ["revision_count", "archived", "archived_at", "archive_reason", "merged_from"]
+        for field in unwanted_fields:
+            data.pop(field, None)
+        
+        # Handle update_reason
+        if "update_reason" not in data:
+            data["update_reason"] = None
         
         # Clean the content to remove problematic characters
         if "content" in data and data["content"]:
@@ -92,10 +83,9 @@ class Bullet:
         return f"[{self.id}] helpful={self.helpful_count} harmful={self.harmful_count} :: {self.content}"
     
     def archive(self, reason: str) -> None:
-        """Mark bullet as archived."""
-        self.archived = True
-        self.archived_at = datetime.utcnow().isoformat()
-        self.archive_reason = reason
+        """Mark bullet as archived (deprecated - bullets are removed instead)."""
+        # This method is kept for backward compatibility but does nothing
+        pass
 
 
 @dataclass
@@ -131,9 +121,7 @@ class Playbook:
                 "created_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat(),
                 "total_updates": 0,
-                "total_removes": 0,
-                "total_modifies": 0,
-                "total_merges": 0
+                "total_removes": 0
             }
     
     def get_section(self, section_name: str) -> List[Bullet]:
@@ -227,14 +215,12 @@ class Playbook:
         # Clean and update content
         bullet.content = clean_text_content(new_content)
         bullet.updated_at = datetime.utcnow().isoformat()
-        bullet.revision_count += 1
         bullet.update_reason = reason  # Store the reason for this modification
         
         if reset_harmful:
             bullet.harmful_count = 0
         
         self.metadata["updated_at"] = datetime.utcnow().isoformat()
-        self.metadata["total_modifies"] = self.metadata.get("total_modifies", 0) + 1
         
         return bullet
     
@@ -288,8 +274,7 @@ class Playbook:
             content=merged_content,
             helpful_count=total_helpful,
             harmful_count=total_harmful,
-            neutral_count=total_neutral,
-            merged_from=source_ids
+            neutral_count=total_neutral
         )
         
         section_list.append(merged_bullet)
@@ -300,7 +285,6 @@ class Playbook:
                              archive=archive_sources)
         
         self.metadata["updated_at"] = datetime.utcnow().isoformat()
-        self.metadata["total_merges"] = self.metadata.get("total_merges", 0) + 1
         
         return merged_bullet
     
@@ -333,9 +317,6 @@ class Playbook:
         for i, bullet in enumerate(self.archived_bullets):
             if bullet.id == bullet_id:
                 restored = self.archived_bullets.pop(i)
-                restored.archived = False
-                restored.archived_at = None
-                restored.archive_reason = None
                 
                 # Determine target section from ID prefix
                 if target_section is None:
@@ -417,8 +398,7 @@ class Playbook:
         """Get statistics about the playbook."""
         stats = {
             "total_bullets": 0,
-            "sections": {},
-            "archived_count": len(self.archived_bullets)
+            "sections": {}
         }
         for section in PLAYBOOK_SECTIONS:
             bullets = self.get_section(section)
@@ -658,7 +638,7 @@ class PlaybookManager:
             success=True,
             operation_type="MODIFY",
             bullet_id=bullet_id,
-            message=f"Modified bullet {bullet_id} (revision {modified.revision_count}): {reason}",
+            message=f"Modified bullet {bullet_id}: {reason}",
             affected_bullets=[bullet_id]
         )
     

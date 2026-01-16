@@ -228,8 +228,6 @@ class TestPlaybookRemoveOperation:
         
         assert removed is not None
         assert removed.id == bullet_id
-        assert removed.archived is True
-        assert removed.archive_reason == "Test removal"
         assert len(sample_playbook.archived_bullets) == 1
     
     def test_remove_nonexistent_bullet(self, sample_playbook):
@@ -266,7 +264,6 @@ class TestPlaybookModifyOperation:
         assert modified is not None
         assert modified.id == original_id  # ID preserved
         assert modified.content == "Updated content with better information"
-        assert modified.revision_count == 1
     
     def test_modify_preserves_counts(self, sample_playbook):
         """Test that modification preserves helpful/harmful counts."""
@@ -319,7 +316,6 @@ class TestPlaybookMergeOperation:
         
         assert merged is not None
         assert merged.helpful_count == 5  # Sum of source counts
-        assert merged.merged_from == source_ids
         # Source bullets should be archived
         assert len(sample_playbook.archived_bullets) == 2
     
@@ -497,7 +493,6 @@ class TestBulletRestore:
         assert restored is not None
         assert restored.id == bullet_id
         assert restored.content == original_content
-        assert restored.archived is False
         assert len(sample_playbook.archived_bullets) == 0
 
 
